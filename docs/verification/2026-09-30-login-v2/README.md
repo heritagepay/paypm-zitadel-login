@@ -9,6 +9,8 @@ state. The stock visual shell remains an unfinished design surface.
 | `login-name/honor-tablet-before-dark-en.png` | Upstream v4.15.3, Android night mode yes, EN | Dark form and theme selector: failed PayPM invariant |
 | `login-name/honor-tablet-after-dark-en.png` | PayPM source `a9f170b`, Android night mode yes, EN | Light form; no theme selector |
 | `login-name/honor-tablet-after-dark-fr.png` | Same deployed revision, Android night mode yes, FR | Light form with French copy; no theme selector |
+| `merchant-sign-in/honor-tablet-native-entry-en.png` | Installed Merchant `net.paypm.merchant` 1.0.0, Honor tablet, cold launch | Real native Sign in entry; assigned-outlet access is explicit |
+| `merchant-sign-in/honor-tablet-hosted-entry-fr.png` | Sign in tapped in that native app; public `auth.paypm.net` Chrome Custom Tab | Own app-initiated OIDC flow reaches the corrected French hosted form |
 
 - Device: Honor JMS-W09, `AJ5EJK6808C02336`, physical 800x1340. All three
   images were opened individually; original night-mode setting `no` restored.
@@ -21,6 +23,13 @@ state. The stock visual shell remains an unfinished design surface.
 - Public Chrome account/password language switches and account selection
   passed; the account's password field remained empty. No completed sign-in,
   MFA, OIDC callback, money flow or target-app permission is claimed.
+- Native Merchant cold launch → Sign in → public hosted form → supplied existing
+  account identifier → password step passed on the tablet. The private password
+  step is left on-device for the owner; no credentials were inserted or reset.
+  Installed app update time was `2026-09-30 02:24:44`; this is installed-state
+  evidence, not a fresh mobile source/build attestation. The phone had dropped
+  off USB by the later inventory. A warm re-entry encountered the older
+  AppAuth cancellation state; cold launch then opened the fresh flow normally.
 - Source proof: 797 tests, changed-file lint/format, TypeScript and production
   build passed. Upstream unrelated whole-lint formatting failures remain
   disclosed in the [run record](../../../.eshe/runs/2026-09-30-light-only-login-v2.md).
