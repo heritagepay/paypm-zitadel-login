@@ -1,6 +1,8 @@
 import createNextIntlPlugin from "next-intl/plugin";
+import { fileURLToPath } from "node:url";
 
 const withNextIntl = createNextIntlPlugin();
+const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 const secureHeaders = [
   {
@@ -26,6 +28,8 @@ const secureHeaders = [
 const nextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH,
   output: process.env.NEXT_OUTPUT_MODE || undefined,
+  outputFileTracingRoot: workspaceRoot,
+  turbopack: { root: workspaceRoot },
   reactStrictMode: true,
   experimental: {
     // Add React 19 compatibility optimizations

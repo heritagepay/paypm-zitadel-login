@@ -1,0 +1,10 @@
+# PayPM ZITADEL Login source fork
+
+- Repository: `heritagepay/paypm-zitadel-login`, an upstream-history-preserving fork of `zitadel/zitadel` pinned initially to `v4.15.3` (`e2886a61670ca8fd41c9434f87036546e5620bcc`). The local sparse checkout includes `apps/login`, its client/proto sources, and root build configuration. It is not a PayPM commercial product.
+- Product authority: [PayPM vision](../../../deploy/docs/VISION.md) and [shared visual system](../../../deploy/docs/VISUAL_SYSTEM.md); exactly Wallet, Merchant, and Marketplace remain the commercial products. This repository owns only the hosted authentication ceremony UI; ZITADEL retains authentication and session truth, PayPM Identity retains people/Business/membership truth, and product APIs retain permission truth.
+- Current actor/job: a Wallet customer, Merchant staff member, or authorized operator signs in through the hosted ZITADEL flow and returns to the requesting app. An unaffiliated subject or a signed-in subject without product permission remains denied by the owning app/API.
+- Current slice: enforce PayPM's light-only presentation at the Login V2 source boundary, independent of Android system mode or a provider branding-policy readback; remove the unused theme selector. Preserve authorization code with PKCE, password, passkey, MFA, reset, callback, account selection, and logout behavior.
+- French and English are mandatory. This narrow theme correction changes no strings or authentication authority. A later full visual redesign is Tier A and requires its own design-research artifact before presentation code.
+- Provider dependency: deployed ZITADEL API and Login V2 are v4.15.3; GitOps `identity` chart 10.0.4 routes `/ui/v2/login`. This fork requires immutable image/build proof and a canary before GitOps promotion.
+- Non-goals: changing registration, granting Merchant or staff authority, making a second identity truth, changing Wallet flows, rewriting upstream APIs, or treating a visual screenshot as authenticated actor proof.
+- Current run: [light-only Login V2 correction](../runs/2026-09-30-light-only-login-v2.md).
