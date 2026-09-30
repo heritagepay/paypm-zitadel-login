@@ -116,11 +116,15 @@ export async function getHostedLoginTranslation({
                 value: true,
               },
           locale: locale,
+          // The system fallback is English even for non-English locale requests
+          // on the PayPM instance. Only explicit customizations should override
+          // the bundled locale messages.
+          ignoreInheritance: true,
         },
         {},
       )
       .then((resp) => {
-        return resp.translations ? resp.translations : undefined;
+        return resp.translations || {};
       });
   };
 

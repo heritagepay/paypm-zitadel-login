@@ -52,22 +52,20 @@ export default getRequestConfig(async () => {
 
   const i18nOrganization = _headers.get("x-zitadel-i18n-organization") || ""; // You may need to set this header in middleware
 
-  let translations: JsonObject | Record<string, never> = {};
-  try {
-    const i18nJSON = await getHostedLoginTranslation({
-      serviceConfig,
-      locale,
-      organization: i18nOrganization,
-    });
-
-    if (i18nJSON) {
-      translations = i18nJSON;
+  const customMessages: JsonObject[] = [];
+  // Apply only explicit instance and organization overrides, in that order.
+  // ZITADEL's inherited system bundle must not replace the local FR messages
+  // with its English fallback.
+  for (const organization of [undefined, ...(i18nOrganization ? [i18nOrganization] : [])]) {
+    try {
+      const translations = await getHostedLoginTranslation({ serviceConfig, locale, organization });
+      if (translations) {
+        customMessages.push(translations);
+      }
+    } catch (error) {
+      console.warn("Error fetching custom translations:", error);
     }
-  } catch (error) {
-    console.warn("Error fetching custom translations:", error);
   }
-
-  const customMessages = translations;
 
   // Load locale messages, fall back to default language messages if locale not found
   let localeMessages;
@@ -85,6 +83,6 @@ export default getRequestConfig(async () => {
 
   return {
     locale,
-    messages: deepmerge.all([fallbackMessages, localeMessages, customMessages]) as Record<string, string>,
+    messages: deepmerge.all([fallbackMessages, localeMessages, ...customMessages]) as Record<string, string>,
   };
 });
