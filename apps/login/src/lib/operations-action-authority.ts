@@ -5,6 +5,7 @@ import type {
   OperationsActionCommand,
   OperationsActionExpected,
   OperationsCallerMaterial,
+  OperationsGrantCommand,
 } from "./operations-action-store";
 import { workforceAssertionHash } from "./workforce-assertion";
 const denied = () => new Error("Operations action authority unavailable");
@@ -19,7 +20,28 @@ export function canonicalOperationsJson(value: unknown): string {
 }
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const operationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
-export function operationsCommand(value: unknown): value is OperationsActionCommand {
+export type OperationsActionFamily = "settlement" | "grant";
+export function operationsActionFamily(action: unknown): OperationsActionFamily | undefined {
+  if (
+    [
+      "operations.merchant.settlement.review",
+      "operations.merchant.settlement.approve",
+      "operations.merchant.settlement.execute",
+    ].includes(String(action))
+  )
+    return "settlement";
+  if (
+    ["operations.access.grant.review", "operations.access.grant.approve", "operations.access.grant.revoke"].includes(
+      String(action),
+    )
+  )
+    return "grant";
+}
+export function operationsCommand(
+  value: unknown,
+  family: OperationsActionFamily = "settlement",
+): value is OperationsActionCommand {
+  if (family === "grant") return operationsGrantCommand(value);
   return (
     !!value &&
     typeof value === "object" &&
@@ -29,7 +51,51 @@ export function operationsCommand(value: unknown): value is OperationsActionComm
     operationUuid.test((value as OperationsActionCommand).operationKey)
   );
 }
-export function operationsExpected(value: unknown): value is OperationsActionExpected {
+export function operationsGrantCommand(value: unknown): value is OperationsGrantCommand {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !==
+      "capability,expiresAt,merchantBusinessId,operationKey,organizationId,policyId,reason,targetAuthentication,targetPersonId"
+  )
+    return false;
+  const c = value as OperationsGrantCommand,
+    a = c.targetAuthentication;
+  return (
+    [c.policyId, c.targetPersonId, c.merchantBusinessId, c.organizationId].every(
+      (v) => typeof v === "string" && uuid.test(v),
+    ) &&
+    typeof c.operationKey === "string" &&
+    operationUuid.test(c.operationKey) &&
+    !!a &&
+    typeof a === "object" &&
+    !Array.isArray(a) &&
+    Object.keys(a).sort().join(",") === "issuer,subject" &&
+    typeof a.issuer === "string" &&
+    /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(a.issuer) &&
+    typeof a.subject === "string" &&
+    /^[1-9]\d{0,39}$/.test(a.subject) &&
+    [
+      "operations.merchant.settlement.read",
+      "operations.merchant.settlement.review",
+      "operations.merchant.settlement.approve",
+      "operations.merchant.settlement.execute",
+    ].includes(c.capability) &&
+    typeof c.expiresAt === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.expiresAt) &&
+    Number.isFinite(Date.parse(c.expiresAt)) &&
+    typeof c.reason === "string" &&
+    c.reason.trim() === c.reason &&
+    c.reason.length >= 10 &&
+    c.reason.length <= 500 &&
+    !Array.from(c.reason).some((letter) => letter.charCodeAt(0) < 32 || letter.charCodeAt(0) === 127)
+  );
+}
+export function operationsExpected(
+  value: unknown,
+  family: OperationsActionFamily = "settlement",
+): value is OperationsActionExpected {
   if (
     !value ||
     typeof value !== "object" ||
@@ -57,11 +123,7 @@ export function operationsExpected(value: unknown): value is OperationsActionExp
     typeof e.deploymentId === "string" &&
     /^[a-z0-9_]{1,128}$/.test(e.deploymentId) &&
     ["production", "staging", "sandbox"].includes(String(e.environment)) &&
-    [
-      "operations.merchant.settlement.review",
-      "operations.merchant.settlement.approve",
-      "operations.merchant.settlement.execute",
-    ].includes(String(e.action)) &&
+    operationsActionFamily(e.action) === family &&
     typeof e.payloadHash === "string" &&
     /^[a-f0-9]{64}$/.test(e.payloadHash)
   );
@@ -71,10 +133,12 @@ export async function readOperationsActionAuthority(
   command: OperationsActionCommand,
   proofs: Pick<OperationsCallerMaterial, "idToken" | "accessToken" | "nonce" | "clientId">,
 ): Promise<OperationsActionBinding> {
-  if (!operationsExpected(expected) || !operationsCommand(command)) throw denied();
-  const url = process.env.PAYPM_OPERATIONS_ACTION_AUTHORITY_URL,
-    keyId = process.env.PAYPM_OPERATIONS_ACTION_AUTHORITY_KEY_ID,
-    secret = process.env.PAYPM_OPERATIONS_ACTION_AUTHORITY_API_KEY;
+  const family = operationsActionFamily(expected.action);
+  if (!family || !operationsExpected(expected, family) || !operationsCommand(command, family)) throw denied();
+  const prefix = family === "grant" ? "PAYPM_OPERATIONS_GRANT_AUTHORITY" : "PAYPM_OPERATIONS_ACTION_AUTHORITY";
+  const url = process.env[prefix + "_URL"],
+    keyId = process.env[prefix + "_KEY_ID"],
+    secret = process.env[prefix + "_API_KEY"];
   if (
     !url ||
     !keyId ||
@@ -85,6 +149,18 @@ export async function readOperationsActionAuthority(
       process.env.PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN,
       process.env.PAYPM_OPERATIONS_ADMISSION_READER_TOKEN,
       process.env.PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET,
+      process.env.PAYPM_OPERATIONS_GRANT_BFF_TOKEN,
+      process.env.PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN,
+      process.env.PAYPM_WORKFORCE_ADMISSION_READER_TOKEN,
+      process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET,
+      process.env.PAYPM_WORKFORCE_FLOW_KEY_BASE64,
+      process.env.PAYPM_WORKFORCE_STORE_KEY_BASE64,
+      process.env.PAYPM_OPERATIONS_STORE_KEY_BASE64,
+      process.env.PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64,
+      process.env.PAYPM_OPERATIONS_LOGOUT_TOKEN,
+      process.env[
+        family === "grant" ? "PAYPM_OPERATIONS_ACTION_AUTHORITY_API_KEY" : "PAYPM_OPERATIONS_GRANT_AUTHORITY_API_KEY"
+      ],
     ].every((v) => v !== secret)
   )
     throw denied();
@@ -95,7 +171,10 @@ export async function readOperationsActionAuthority(
     target.password ||
     target.search ||
     target.hash ||
-    target.pathname !== "/api/v1/internal/operations/authority/actions/current" ||
+    target.pathname !==
+      (family === "grant"
+        ? "/api/v1/internal/operations/authority/grants/actions/current"
+        : "/api/v1/internal/operations/authority/actions/current") ||
     !/^[A-Za-z0-9_:-]{1,26}$/.test(keyId)
   )
     throw denied();
@@ -137,7 +216,28 @@ export async function readOperationsActionAuthority(
     Object.keys(expected).some((k) => result[k] !== expected[k as keyof OperationsActionExpected])
   )
     throw denied();
-  if (
+  if (family === "grant") {
+    const c = command as OperationsGrantCommand,
+      r = result.resource;
+    if (
+      !r ||
+      typeof r !== "object" ||
+      Array.isArray(r) ||
+      Object.keys(r).sort().join(",") !==
+        "capability,merchantBusinessId,organizationId,policyHash,policyId,targetAuthentication,targetPersonId" ||
+      r.policyId !== c.policyId ||
+      result.capabilityDecisionId !== c.policyId ||
+      r.targetPersonId !== c.targetPersonId ||
+      r.capability !== c.capability ||
+      r.merchantBusinessId !== c.merchantBusinessId ||
+      r.organizationId !== c.organizationId ||
+      typeof r.policyHash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(r.policyHash) ||
+      workforceAssertionHash(r.targetAuthentication) !== workforceAssertionHash(c.targetAuthentication) ||
+      c.targetAuthentication.issuer !== expected.issuer
+    )
+      throw denied();
+  } else if (
     !result.resource ||
     typeof result.resource !== "object" ||
     Array.isArray(result.resource) ||
@@ -158,7 +258,12 @@ export async function readOperationsActionAuthority(
     contextId: expected.contextId,
     target: result.resource,
     idempotencyKey: command.operationKey,
-    input: expected.action === "operations.merchant.settlement.approve" ? { decision: "approve" } : {},
+    input:
+      family === "grant"
+        ? { expiresAt: (command as OperationsGrantCommand).expiresAt, reason: (command as OperationsGrantCommand).reason }
+        : expected.action === "operations.merchant.settlement.approve"
+          ? { decision: "approve" }
+          : {},
   };
   if (workforceAssertionHash(payload) !== expected.payloadHash) throw denied();
   return { expected, command, capabilityDecisionId: result.capabilityDecisionId, resource: result.resource };

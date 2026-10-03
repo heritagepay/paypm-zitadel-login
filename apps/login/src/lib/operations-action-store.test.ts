@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import postgres, { type Sql } from "postgres";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import grantFixture from "../../test-fixtures/operations-governed-grant.json";
 import { OperationsActionStore, type OperationsActionBinding } from "./operations-action-store";
 import { WorkforceStore } from "./workforce-store";
 const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL,
@@ -132,6 +133,54 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
         binding: { ...input.binding, expected: { ...input.binding.expected, environment: "sandbox" } },
       }),
     ).rejects.toMatchObject({ code: "operations_action_conflict" });
+  });
+  it("persists a grant discriminator and exact policy/target across races and uncertain consumption", async () => {
+    const input = await ready();
+    input.binding = {
+      expected: {
+        ...input.binding.expected,
+        action: "operations.access.grant.review",
+        payloadHash: grantFixture.request.expected.payloadHash,
+      },
+      command: grantFixture.request.command as any,
+      resource: grantFixture.response.resource as any,
+      capabilityDecisionId: grantFixture.request.command.policyId,
+    };
+    const rows = await Promise.all(Array.from({ length: 5 }, () => store.reserve(input)));
+    expect(new Set(rows.map((r) => r.id)).size).toBe(1);
+    expect(rows[0].binding).toEqual(input.binding);
+    await expect(
+      store.reserve({
+        ...input,
+        binding: { ...input.binding, command: { ...input.binding.command, targetPersonId: randomUUID() } as any },
+      }),
+    ).rejects.toMatchObject({ code: "operations_action_conflict" });
+    await store.claimCreation(input.id);
+    await store.created(input.id, {
+      sessionId: "8899",
+      sessionToken: "synthetic-grant-step-token",
+      publicKey: { challenge: "actual-grant-challenge", userVerification: "required" },
+    });
+    const attempt = await store.attempt(input.id, { id: "credential", response: { signed: "synthetic-signed-assertion" } });
+    const verified = await store.verified(
+      input.id,
+      new Date(Math.max(Date.now(), attempt.row.verification_started_at!.getTime())),
+    );
+    const receipt = store.receipt(verified);
+    const consumed = await Promise.allSettled(Array.from({ length: 5 }, () => store.consume(receipt, input.binding)));
+    expect(consumed.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((await store.consume(receipt, input.binding, true)).binding).toEqual(input.binding);
+    await expect(
+      store.consume(
+        receipt,
+        { ...input.binding, resource: { ...input.binding.resource, policyHash: "b".repeat(64) } as any },
+        true,
+      ),
+    ).rejects.toMatchObject({ code: "operations_receipt_not_active" });
+    await base.revoke("5566");
+    await expect(store.consume(receipt, input.binding, true)).rejects.toMatchObject({
+      code: "operations_receipt_not_active",
+    });
   });
   it("retains only the exact opaque public capability and original provider challenge", async () => {
     const { input, row, material } = await created();

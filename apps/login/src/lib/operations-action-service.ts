@@ -7,7 +7,13 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import "server-only";
 import { providerTimestampMs, sessionLifetime, verifiedFactor } from "./authentication-policy";
 import { isClassifiedError } from "./grpc/interceptors/error-classification";
-import { operationsCommand, operationsExpected, readOperationsActionAuthority } from "./operations-action-authority";
+import {
+  operationsActionFamily,
+  operationsCommand,
+  operationsExpected,
+  readOperationsActionAuthority,
+  type OperationsActionFamily,
+} from "./operations-action-authority";
 import {
   operationsActionStore,
   type OperationsActionExpected,
@@ -28,7 +34,14 @@ const denied = () => new Error("Operations action verification unavailable");
 const noStore = { "cache-control": "no-store" };
 const failure = () =>
   Response.json({ error: "Operations action verification unavailable" }, { status: 403, headers: noStore });
-function purpose(request: Request, name: "PAYPM_OPERATIONS_ACTION_BFF_TOKEN" | "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN") {
+function purpose(
+  request: Request,
+  name:
+    | "PAYPM_OPERATIONS_ACTION_BFF_TOKEN"
+    | "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN"
+    | "PAYPM_OPERATIONS_GRANT_BFF_TOKEN"
+    | "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN",
+) {
   const secret = process.env[name];
   if (
     !secret ||
@@ -36,11 +49,19 @@ function purpose(request: Request, name: "PAYPM_OPERATIONS_ACTION_BFF_TOKEN" | "
     [
       "PAYPM_OPERATIONS_ACTION_BFF_TOKEN",
       "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN",
+      "PAYPM_OPERATIONS_GRANT_BFF_TOKEN",
+      "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN",
       "PAYPM_OPERATIONS_ADMISSION_READER_TOKEN",
       "PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET",
       "PAYPM_WORKFORCE_ADMISSION_READER_TOKEN",
       "PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET",
+      "PAYPM_WORKFORCE_FLOW_KEY_BASE64",
+      "PAYPM_WORKFORCE_STORE_KEY_BASE64",
+      "PAYPM_LEGACY_MIGRATION_FLOW_KEY_BASE64",
       "PAYPM_OPERATIONS_ACTION_AUTHORITY_API_KEY",
+      "PAYPM_OPERATIONS_GRANT_AUTHORITY_API_KEY",
+      "PAYPM_OPERATIONS_LOGOUT_TOKEN",
+      "PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64",
       "PAYPM_OPERATIONS_STORE_KEY_BASE64",
     ]
       .filter((v) => v !== name)
@@ -130,6 +151,7 @@ function expected(
   value: Record<string, string>,
   action: OperationsActionExpected["action"],
   payloadHash: string,
+  family: OperationsActionFamily = "settlement",
 ): OperationsActionExpected {
   const result = {
     personId: value.personId,
@@ -144,7 +166,7 @@ function expected(
     action,
     payloadHash,
   };
-  if (!operationsExpected(result)) throw denied();
+  if (!operationsExpected(result, family)) throw denied();
   return result;
 }
 async function live(row: OperationsActionRow, allowCancelled = false) {
@@ -159,8 +181,14 @@ async function live(row: OperationsActionRow, allowCancelled = false) {
   const current = await admission(proofs),
     binding = row.binding;
   if (
-    workforceAssertionHash(expected(current, binding.expected.action, binding.expected.payloadHash)) !==
-      workforceAssertionHash(binding.expected) ||
+    workforceAssertionHash(
+      expected(
+        current,
+        binding.expected.action,
+        binding.expected.payloadHash,
+        operationsActionFamily(binding.expected.action),
+      ),
+    ) !== workforceAssertionHash(binding.expected) ||
     current.requestId !== row.request_id
   )
     throw denied();
@@ -241,9 +269,9 @@ function receiptResponse(row: OperationsActionRow) {
     assurance: "paypm_fresh_operations_passkey",
   };
 }
-export async function startOperationsAction(request: Request) {
+export async function startOperationsAction(request: Request, family: OperationsActionFamily = "settlement") {
   try {
-    purpose(request, "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
+    purpose(request, family === "grant" ? "PAYPM_OPERATIONS_GRANT_BFF_TOKEN" : "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
     const value = await input(request, [
       "requestId",
       "idToken",
@@ -260,14 +288,14 @@ export async function startOperationsAction(request: Request) {
       !uuid.test(value.requestId) ||
       typeof value.callbackState !== "string" ||
       !/^[A-Za-z0-9_-]{64}$/.test(value.callbackState) ||
-      !operationsCommand(value.command) ||
+      !operationsCommand(value.command, family) ||
       !["idToken", "accessToken", "nonce", "clientId", "action", "payloadHash"].every((k) => typeof value[k] === "string")
     )
       throw denied();
     const { p, serviceConfig } = await providerConfig(),
       proofs = { idToken: value.idToken, accessToken: value.accessToken, nonce: value.nonce, clientId: value.clientId };
     const current = await admission(proofs),
-      e = expected(current, value.action, value.payloadHash),
+      e = expected(current, value.action, value.payloadHash, family),
       binding = await readOperationsActionAuthority(e, value.command, proofs),
       store = operationsActionStore();
     await store.clearExpired();
@@ -332,12 +360,12 @@ export async function startOperationsAction(request: Request) {
     return failure();
   }
 }
-export async function readOperationsAction(request: Request, id: string) {
+export async function readOperationsAction(request: Request, id: string, family: OperationsActionFamily = "settlement") {
   try {
-    purpose(request, "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
+    purpose(request, family === "grant" ? "PAYPM_OPERATIONS_GRANT_BFF_TOKEN" : "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
     if (!uuid.test(id)) throw denied();
     const value = await input(request, ["expected", "command"]);
-    if (!operationsExpected(value.expected) || !operationsCommand(value.command)) throw denied();
+    if (!operationsExpected(value.expected, family) || !operationsCommand(value.command, family)) throw denied();
     const store = operationsActionStore(),
       row = await store.row(id, true);
     if (
@@ -458,15 +486,22 @@ export async function completeOperationsPublicAction(request: Request, id: strin
     return failure();
   }
 }
-export async function consumeOperationsAction(request: Request, readback = false) {
+export async function consumeOperationsAction(
+  request: Request,
+  readback = false,
+  family: OperationsActionFamily = "settlement",
+) {
   try {
-    purpose(request, "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN");
+    purpose(
+      request,
+      family === "grant" ? "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN" : "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN",
+    );
     const value = await input(request, ["receipt", "expected", "command"]);
     if (
       typeof value.receipt !== "string" ||
       !/^paypm-ops1\.[A-Za-z0-9_-]{43}$/.test(value.receipt) ||
-      !operationsExpected(value.expected) ||
-      !operationsCommand(value.command)
+      !operationsExpected(value.expected, family) ||
+      !operationsCommand(value.command, family)
     )
       throw denied();
     const store = operationsActionStore(),

@@ -457,7 +457,10 @@
     "actions": {
       "review": "Examiner un règlement marchand",
       "approve": "Approuver un règlement marchand",
-      "execute": "Exécuter un règlement marchand approuvé"
+      "execute": "Exécuter un règlement marchand approuvé",
+      "grantReview": "Examiner un accès aux Opérations",
+      "grantApprove": "Approuver un accès aux Opérations",
+      "grantRevoke": "Révoquer un accès aux Opérations"
     }
   }
 }

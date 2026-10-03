@@ -57,6 +57,9 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
           "operations.merchant.settlement.review",
           "operations.merchant.settlement.approve",
           "operations.merchant.settlement.execute",
+          "operations.access.grant.review",
+          "operations.access.grant.approve",
+          "operations.access.grant.revoke",
         ].includes(value.action) ||
         !value.publicKey ||
         value.publicKey.userVerification !== "required" ||
@@ -172,7 +175,13 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
       setCancelling(false);
     }
   }
-  const action = flow?.action.split(".").at(-1);
+  const action = flow?.action.startsWith("operations.access.grant.")
+    ? "grant" +
+      flow.action
+        .split(".")
+        .at(-1)!
+        .replace(/^./, (letter) => letter.toUpperCase())
+    : flow?.action.split(".").at(-1);
   return (
     <DynamicTheme>
       <div className="flex flex-col space-y-4">

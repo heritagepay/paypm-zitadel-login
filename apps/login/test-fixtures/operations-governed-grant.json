@@ -1,0 +1,221 @@
+{
+  "fixtureOnly": true,
+  "frozenDate": "2026-10-03T12:00:02.000Z",
+  "ownerPolicy": {
+    "policyId": "00000005-0000-4000-8000-000000000000",
+    "enabled": true,
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "businessId": "00000006-0000-4000-8000-000000000000",
+    "organizationId": "00000007-0000-4000-8000-000000000000",
+    "ownerPersonIds": [
+      "00000001-0000-4000-8000-000000000000",
+      "00000002-0000-4000-8000-000000000000"
+    ],
+    "capabilities": [
+      "operations.merchant.settlement.read",
+      "operations.merchant.settlement.review",
+      "operations.merchant.settlement.approve",
+      "operations.merchant.settlement.execute"
+    ],
+    "maxGrantSeconds": 86400
+  },
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.grant.review",
+      "payloadHash": "4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    }
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.grant.review",
+    "payloadHash": "4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "bfae743ea9b6abffacc2fcc6c791ed878ca7b939164a3afdfde833a21012078e",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    }
+  },
+  "preparation": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.grant.review",
+      "payloadHash": "4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "bfae743ea9b6abffacc2fcc6c791ed878ca7b939164a3afdfde833a21012078e",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000"
+  },
+  "proofResponse": {
+    "proofId": "00000009-0000-4000-8000-000000000000",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.grant.review",
+    "payloadHash": "4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "bfae743ea9b6abffacc2fcc6c791ed878ca7b939164a3afdfde833a21012078e",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "proofSessionId": "523456789012345678",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:01.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  },
+  "receipt": "paypm-ops1.ggggggggggggggggggggggggggggggggggggggggggg",
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.access.grant.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "bfae743ea9b6abffacc2fcc6c791ed878ca7b939164a3afdfde833a21012078e",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.merchant.settlement.read",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "idempotencyKey": "00000008-0000-4000-8000-000000000000",
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    }
+  },
+  "hmac": {
+    "path": "/api/v1/internal/operations/authority/grants/actions/current",
+    "rawJSON": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.grant.review\",\"payloadHash\":\"4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.merchant.settlement.read\",\"merchantBusinessId\":\"00000006-0000-4000-8000-000000000000\",\"organizationId\":\"00000007-0000-4000-8000-000000000000\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read settlement evidence for the registered organization\"}}",
+    "signedBytes": "1791028802.00000010-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/grants/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.grant.review\",\"payloadHash\":\"4b3ac4ac8f7293f224ea164fff335912d466118aafe95a7283e74a8d5df6e2d3\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.merchant.settlement.read\",\"merchantBusinessId\":\"00000006-0000-4000-8000-000000000000\",\"organizationId\":\"00000007-0000-4000-8000-000000000000\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read settlement evidence for the registered organization\"}}",
+    "fixtureSecret": "fixture-only-operations-grant-reader-hmac-not-a-live-secret",
+    "header": "t=1791028802,n=00000010-0000-4000-8000-000000000000,v2=ecaabc9c6398ddc7b0ddcb970708d5623a67a4de8ad8c93383a1a1c971246758"
+  }
+}

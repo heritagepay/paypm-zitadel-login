@@ -54,6 +54,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("Operations action passkey experience", () => {
+  it.each(["en", "fr"])("describes governed access actions truthfully in %s with no automatic prompt", async (locale) => {
+    const copy = locale === "fr" ? fr : en;
+    fetcher.mockImplementation(async (url: string) =>
+      Response.json(
+        url.endsWith("/challenge") ? { ...flow(), action: "operations.access.grant.approve" } : { callbackUrl: callback },
+      ),
+    );
+    mount(locale);
+    await screen.findByRole("button", { name: copy.operationsAction.verify });
+    expect(screen.getByText(copy.operationsAction.actions.grantApprove)).toBeInTheDocument();
+    expect(screen.queryByText(copy.operationsAction.actions.approve)).not.toBeInTheDocument();
+    expect(get).not.toHaveBeenCalled();
+  });
   it("loads only bounded options, strips the capability URL and requests native verification only on user action", async () => {
     mount("fr");
     await screen.findByRole("button", { name: fr.operationsAction.verify });

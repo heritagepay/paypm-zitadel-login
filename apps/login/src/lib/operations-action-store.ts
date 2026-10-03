@@ -17,15 +17,34 @@ export type OperationsActionExpected = {
   action:
     | "operations.merchant.settlement.review"
     | "operations.merchant.settlement.approve"
-    | "operations.merchant.settlement.execute";
+    | "operations.merchant.settlement.execute"
+    | "operations.access.grant.review"
+    | "operations.access.grant.approve"
+    | "operations.access.grant.revoke";
   payloadHash: string;
 };
-export type OperationsActionCommand = { operationKey: string; merchantBusinessId: string; organizationId: string };
+export type OperationsSettlementCommand = { operationKey: string; merchantBusinessId: string; organizationId: string };
+export type OperationsGrantCommand = OperationsSettlementCommand & {
+  policyId: string;
+  targetPersonId: string;
+  targetAuthentication: { issuer: string; subject: string };
+  capability:
+    | "operations.merchant.settlement.read"
+    | "operations.merchant.settlement.review"
+    | "operations.merchant.settlement.approve"
+    | "operations.merchant.settlement.execute";
+  expiresAt: string;
+  reason: string;
+};
+export type OperationsActionCommand = OperationsSettlementCommand | OperationsGrantCommand;
+export type OperationsGrantResource = Omit<OperationsGrantCommand, "operationKey" | "expiresAt" | "reason"> & {
+  policyHash: string;
+};
 export type OperationsActionBinding = {
   expected: OperationsActionExpected;
   command: OperationsActionCommand;
   capabilityDecisionId: string;
-  resource: { merchantBusinessId: string; organizationId: string; currency: string };
+  resource: { merchantBusinessId: string; organizationId: string; currency: string } | OperationsGrantResource;
 };
 export type OperationsCallerMaterial = {
   idToken: string;
