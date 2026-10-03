@@ -260,6 +260,46 @@ export class WorkforceStore {
       return { first: inserted.length === 1 };
     });
   }
+  async reserveLegacyRetirement(
+    caseId: string,
+    decisionId: string,
+    caseHash: string,
+    binding: unknown,
+    subject: string,
+    organizationId: string,
+  ) {
+    return this.sql.begin(async (tx) => {
+      await tx`INSERT INTO login_legacy_recovery_retirements(id,case_id,decision_id,case_hash,binding,provider_subject,provider_organization_id) VALUES(${randomUUID()},${caseId},${decisionId},${caseHash},${tx.json(binding as postgres.JSONValue)},${subject},${organizationId}) ON CONFLICT DO NOTHING`;
+      const [row] = await tx<
+        {
+          id: string;
+          decision_id: string;
+          case_hash: string;
+          provider_subject: string;
+          provider_organization_id: string;
+          state: "pending" | "retired";
+        }[]
+      >`SELECT * FROM login_legacy_recovery_retirements WHERE case_id=${caseId} FOR UPDATE`;
+      if (
+        !row ||
+        row.decision_id !== decisionId ||
+        row.case_hash !== caseHash ||
+        row.provider_subject !== subject ||
+        row.provider_organization_id !== organizationId
+      )
+        throw new WorkforceStoreError("legacy_retirement_binding_changed");
+      return row;
+    });
+  }
+  async claimLegacyRetirement(id: string) {
+    const rows = await this
+      .sql`UPDATE login_legacy_recovery_retirements SET attempted_at=clock_timestamp(),attempts=attempts+1 WHERE id=${id} AND state='pending' AND attempts<5 AND (attempted_at IS NULL OR attempted_at<clock_timestamp()-interval '10 seconds') RETURNING id`;
+    return rows.length === 1;
+  }
+  async legacyRetirementConfirmed(id: string) {
+    await this
+      .sql`UPDATE login_legacy_recovery_retirements SET state='retired',confirmed_at=clock_timestamp() WHERE id=${id} AND state='pending'`;
+  }
   async passkeyAttemptFailed(requestId: string) {
     await this
       .sql`UPDATE login_workforce_passkey_attempts SET state='failed',completed_at=clock_timestamp() WHERE request_id=${requestId} AND state='pending'`;

@@ -14,6 +14,7 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await admin.unsafe(`CREATE SCHEMA ${schema}`);
     sql = postgres(url!, { max: 10, connection: { search_path: schema } });
     await sql.unsafe(readFileSync(new URL("../../migrations/001_workforce_auth.sql", import.meta.url), "utf8"));
+    await sql.unsafe(readFileSync(new URL("../../migrations/002_legacy_recovery_retirements.sql", import.meta.url), "utf8"));
     store = new WorkforceStore(sql, Buffer.alloc(32, 19));
   });
   afterEach(async () => {
@@ -173,6 +174,34 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await expect(sql`DELETE FROM login_workforce_passkey_attempts WHERE request_id=${requestId}`).rejects.toThrow(
       "retained",
     );
+  });
+  it("durably reserves a single exact reviewed legacy retirement and preserves confirmed evidence", async () => {
+    const caseId = randomUUID(),
+      decisionId = randomUUID(),
+      hash = "a".repeat(64),
+      binding = { caseId, decisionId, personId: randomUUID() };
+    const rows = await Promise.all(
+      Array.from({ length: 5 }, () => store.reserveLegacyRetirement(caseId, decisionId, hash, binding, "12345", "200")),
+    );
+    expect(new Set(rows.map((r) => r.id)).size).toBe(1);
+    expect((await Promise.all(rows.map((r) => store.claimLegacyRetirement(r.id)))).filter(Boolean)).toHaveLength(1);
+    await expect(store.reserveLegacyRetirement(caseId, randomUUID(), hash, binding, "12345", "200")).rejects.toMatchObject({
+      code: "legacy_retirement_binding_changed",
+    });
+    await expect(
+      store.reserveLegacyRetirement(caseId, decisionId, "b".repeat(64), binding, "12345", "200"),
+    ).rejects.toMatchObject({ code: "legacy_retirement_binding_changed" });
+    await expect(store.reserveLegacyRetirement(caseId, decisionId, hash, binding, "12345", "300")).rejects.toMatchObject({
+      code: "legacy_retirement_binding_changed",
+    });
+    await store.legacyRetirementConfirmed(rows[0].id);
+    await store.legacyRetirementConfirmed(rows[0].id);
+    expect((await store.reserveLegacyRetirement(caseId, decisionId, hash, binding, "12345", "200")).state).toBe("retired");
+    expect(await store.claimLegacyRetirement(rows[0].id)).toBe(false);
+    await expect(sql`UPDATE login_legacy_recovery_retirements SET state='pending' WHERE id=${rows[0].id}`).rejects.toThrow(
+      "immutable",
+    );
+    await expect(sql`DELETE FROM login_legacy_recovery_retirements WHERE id=${rows[0].id}`).rejects.toThrow("retained");
   });
   it("private current admission observes exact bindings and immediate logout before provider deletion", async () => {
     const row = await ready(),

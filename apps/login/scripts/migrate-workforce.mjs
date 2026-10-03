@@ -9,19 +9,20 @@ const sql = postgres(url, {
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: true } : false,
 });
 try {
-  const version = "001_workforce_auth",
-    source = await readFile(new URL("../migrations/001_workforce_auth.sql", import.meta.url), "utf8"),
-    checksum = createHash("sha256").update(source).digest("hex");
   await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtextextended('paypm-login-workforce-migrations-v1',0))`;
     await tx`CREATE TABLE IF NOT EXISTS login_workforce_migrations(version text PRIMARY KEY,checksum char(64) NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`;
-    const [old] = await tx`SELECT checksum FROM login_workforce_migrations WHERE version=${version}`;
-    if (old) {
-      if (old.checksum !== checksum) throw new Error("Applied workforce migration checksum changed");
-      return;
+    for (const version of ["001_workforce_auth", "002_legacy_recovery_retirements"]) {
+      const source = await readFile(new URL(`../migrations/${version}.sql`, import.meta.url), "utf8"),
+        checksum = createHash("sha256").update(source).digest("hex");
+      const [old] = await tx`SELECT checksum FROM login_workforce_migrations WHERE version=${version}`;
+      if (old) {
+        if (old.checksum !== checksum) throw new Error("Applied workforce migration checksum changed");
+        continue;
+      }
+      await tx.unsafe(source);
+      await tx`INSERT INTO login_workforce_migrations(version,checksum) VALUES(${version},${checksum})`;
     }
-    await tx.unsafe(source);
-    await tx`INSERT INTO login_workforce_migrations(version,checksum) VALUES(${version},${checksum})`;
   });
   console.log("Workforce authentication migration verified");
 } finally {
