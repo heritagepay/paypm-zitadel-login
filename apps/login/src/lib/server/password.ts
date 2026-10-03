@@ -26,12 +26,7 @@ import { headers } from "next/headers";
 import { completeFlowOrGetUrl } from "../client";
 import { getSessionCookieById, getSessionCookieByLoginName } from "../cookies";
 import { getServiceConfig } from "../service-url";
-import {
-  checkEmailVerification,
-  checkMFAFactors,
-  checkPasswordChangeRequired,
-  checkUserVerification,
-} from "../verify-helper";
+import { checkEmailVerification, checkMFAFactors, checkPasswordChangeRequired } from "../verify-helper";
 import { getPublicHostWithProtocol } from "./host";
 
 const logger = createLogger("password");
@@ -373,6 +368,12 @@ export async function sendPassword(
     return { error: t("errors.initialUserNotSupported") };
   }
 
+  if (
+    process.env.PAYPM_WORKFORCE_ORGANIZATION_ID &&
+    user.details?.resourceOwner === process.env.PAYPM_WORKFORCE_ORGANIZATION_ID
+  )
+    return { error: t("errors.codeOrVerificationRequired") };
+
   // check to see if user was verified
   const emailVerificationCheck = checkEmailVerification(session, humanUser, command.organization, command.requestId);
 
@@ -445,7 +446,7 @@ export async function sendPassword(
   return { error: "Authentication completed but navigation failed" };
 }
 
-// this function lets users with code set a password or users with valid User Verification Check
+// Unauthenticated password setup requires a provider-issued, single-use reset code.
 export async function changePassword(command: { code?: string; userId: string; password: string; organization?: string }) {
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
@@ -467,23 +468,8 @@ export async function changePassword(command: { code?: string; userId: string; p
     return { error: t("errors.userInitialStateNotSupported") };
   }
 
-  // check if the user has no password set in order to set a password
   if (!command.code) {
-    const authmethods = await listAuthenticationMethodTypes({ serviceConfig, userId });
-
-    // if the user has no authmethods set, we need to check if the user was verified
-    if (authmethods.authMethodTypes.length !== 0) {
-      return {
-        error: t("errors.codeOrVerificationRequired"),
-      };
-    }
-
-    // check if a verification was done earlier
-    const hasValidUserVerificationCheck = await checkUserVerification(user.userId);
-
-    if (!hasValidUserVerificationCheck) {
-      return { error: t("errors.verificationRequired") };
-    }
+    return { error: t("errors.codeOrVerificationRequired") };
   }
 
   return setUserPassword({ serviceConfig, userId, password: command.password, code: command.code });
@@ -525,6 +511,15 @@ export async function checkSessionAndSetPassword({
 
   if (!session || !session.factors?.user?.id) {
     return { error: t("errors.couldNotLoadSession") };
+  }
+
+  if (
+    process.env.PAYPM_WORKFORCE_ORGANIZATION_ID &&
+    session.factors.user.organizationId === process.env.PAYPM_WORKFORCE_ORGANIZATION_ID
+  ) {
+    // Workforce credential changes require an action receipt from the owning
+    // policy layer; the existing password-only endpoint cannot supply it.
+    return { error: t("errors.codeOrVerificationRequired") };
   }
 
   const loginSettings = await getLoginSettings({

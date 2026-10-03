@@ -6,11 +6,10 @@ import {
   getLoginSettings,
   getSession,
   getUserByID,
-  listAuthenticationMethodTypes,
   registerPasskey,
   verifyPasskeyRegistration as zitadelVerifyPasskeyRegistration,
 } from "@/lib/zitadel";
-import { create, Duration, Timestamp, timestampDate } from "@zitadel/client";
+import { create, Duration } from "@zitadel/client";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { Checks, ChecksSchema, GetSessionResponse } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import {
@@ -22,8 +21,10 @@ import { headers } from "next/headers";
 import { userAgent } from "next/server";
 import { completeFlowOrGetUrl } from "../client";
 import { getSessionCookieById } from "../cookies";
+import { consumeEnrollmentProof, getEnrollmentProof } from "../credential-enrollment";
 import { getServiceConfig } from "../service-url";
-import { checkEmailVerification, checkUserVerification } from "../verify-helper";
+import { isSessionValid as isAdmittedProviderSession } from "../session";
+import { checkEmailVerification } from "../verify-helper";
 import { createSessionAndUpdateCookie } from "./cookie";
 import { getPublicHost } from "./host";
 import { updateOrCreateSession } from "./session";
@@ -45,21 +46,6 @@ type RegisterPasskeyCommand = {
   codeId?: string;
 };
 
-function isSessionValid(session: Partial<Session>): {
-  valid: boolean;
-  verifiedAt?: Timestamp;
-} {
-  const validPassword = session?.factors?.password?.verifiedAt;
-  const validPasskey = session?.factors?.webAuthN?.verifiedAt;
-  const validIDP = session?.factors?.intent?.verifiedAt;
-  const stillValid = session.expirationDate ? timestampDate(session.expirationDate) > new Date() : true;
-
-  const verifiedAt = validPassword || validPasskey || validIDP;
-  const valid = !!((validPassword || validPasskey || validIDP) && stillValid);
-
-  return { valid, verifiedAt };
-}
-
 export async function registerPasskeyLink(
   command: RegisterPasskeyCommand,
 ): Promise<RegisterPasskeyResponse | { error: string }> {
@@ -75,6 +61,7 @@ export async function registerPasskeyLink(
   let createdSession: Session | undefined;
   let currentUserId: string | undefined = undefined;
   let registerCode: { id: string; code: string } | undefined = undefined;
+  let protectedEnrollment = false;
 
   if (command.sessionId) {
     // Session-based flow (existing logic)
@@ -92,29 +79,33 @@ export async function registerPasskeyLink(
 
     currentUserId = session.session.factors.user.id;
 
-    const sessionValid = isSessionValid(session.session);
+    const enrollment = await getEnrollmentProof(session.session.id, currentUserId);
+    if (enrollment) {
+      registerCode = enrollment.code;
+      protectedEnrollment = true;
+    }
 
-    if (!sessionValid.valid) {
-      const authmethods = await listAuthenticationMethodTypes({ serviceConfig, userId: currentUserId });
+    if (
+      process.env.PAYPM_WORKFORCE_ORGANIZATION_ID &&
+      session.session.factors.user.organizationId === process.env.PAYPM_WORKFORCE_ORGANIZATION_ID &&
+      (!command.code || !command.codeId) &&
+      !protectedEnrollment
+    )
+      return { error: "Workforce credential changes require governed provider registration proof" };
 
-      // if the user has no authmethods set, we need to check if the user was verified
-      if (authmethods.authMethodTypes.length !== 0) {
-        return {
-          error: "You have to authenticate or have a valid User Verification Check",
-        };
-      }
+    const sessionValid = await isAdmittedProviderSession({ serviceConfig, session: session.session });
 
-      // check if a verification was done earlier
-      const hasValidUserVerificationCheck = await checkUserVerification(currentUserId);
-
-      logger.info("hasValidUserVerificationCheck", { hasValidUserVerificationCheck });
-      if (!hasValidUserVerificationCheck) {
-        return { error: "User Verification Check has to be done" };
-      }
+    if (!sessionValid) {
+      // The provider validates supplied registration codes in registerPasskey.
+      // Without one, account discovery or a fingerprint cookie is insufficient.
+      if ((!command.code || !command.codeId) && !protectedEnrollment)
+        return { error: "Authentication or provider registration code required" };
     }
 
     // Generate registration code if not provided
-    if (command.code && command.codeId) {
+    if (registerCode) {
+      // Provider-issued proof from successful invite/contact verification.
+    } else if (command.code && command.codeId) {
       registerCode = {
         id: command.codeId,
         code: command.code,
@@ -146,8 +137,8 @@ export async function registerPasskeyLink(
     const checks = create(ChecksSchema, {
       user: {
         search: {
-          case: "loginName",
-          value: userResponse.user.preferredLoginName,
+          case: "userId",
+          value: currentUserId,
         },
       },
     });
@@ -158,7 +149,7 @@ export async function registerPasskeyLink(
     });
     createdSession = result.session;
 
-    if (!createdSession) {
+    if (!createdSession || createdSession.factors?.user?.id !== currentUserId) {
       return { error: "Could not create session" };
     }
   }
@@ -177,7 +168,9 @@ export async function registerPasskeyLink(
     throw new Error("Could not determine user");
   }
 
-  return registerPasskey({ serviceConfig, userId: currentUserId, code: registerCode, domain: hostname });
+  const result = await registerPasskey({ serviceConfig, userId: currentUserId, code: registerCode, domain: hostname });
+  if (protectedEnrollment) await consumeEnrollmentProof();
+  return result;
 }
 
 export async function verifyPasskeyRegistration(command: VerifyPasskeyCommand) {

@@ -15,6 +15,7 @@ import { Challenges, RequestChallenges } from "@zitadel/proto/zitadel/session/v2
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { Checks } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import { headers } from "next/headers";
+import { sessionLifetime } from "../authentication-policy";
 import { getServiceConfig } from "../service-url";
 
 const logger = createLogger("cookie");
@@ -30,7 +31,8 @@ type CustomCookieData = {
   requestId?: string; // if its linked to an OIDC flow
 };
 
-const passwordAttemptsHandler = (error: ConnectError) => {
+const passwordAttemptsHandler = (error: unknown) => {
+  if (!(error instanceof ConnectError)) throw error;
   const details = error.findDetails(CredentialsCheckErrorSchema);
 
   if (details[0] && "failedAttempts" in details[0]) {
@@ -52,21 +54,10 @@ export async function createSessionAndUpdateCookie(command: {
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
 
-  let sessionLifetime = command.lifetime;
-
-  if (!sessionLifetime || !sessionLifetime.seconds) {
-    logger.warn("No session lifetime provided, using default of 24 hours");
-
-    sessionLifetime = {
-      seconds: BigInt(24 * 60 * 60), // 24 hours
-      nanos: 0,
-    } as Duration; // for usecases where the lifetime is not specified (user discovery)
-  }
-
   const createdSession = await createSessionFromChecksAndChallenges({
     serviceConfig,
     checks: command.checks,
-    lifetime: sessionLifetime,
+    lifetime: sessionLifetime(command.lifetime),
     challenges: command.challenges,
   });
 
@@ -126,22 +117,11 @@ export async function createSessionForIdpAndUpdateCookie({
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
 
-  let sessionLifetime = lifetime;
-
-  if (!sessionLifetime || !sessionLifetime.seconds) {
-    logger.warn("No IDP session lifetime provided, using default of 24 hours");
-
-    sessionLifetime = {
-      seconds: BigInt(24 * 60 * 60), // 24 hours
-      nanos: 0,
-    } as Duration;
-  }
-
   const createdSession = await createSessionForUserIdAndIdpIntent({
     serviceConfig,
     userId,
     idpIntent,
-    lifetime: sessionLifetime,
+    lifetime: sessionLifetime(lifetime),
   }).catch((error: ErrorDetail | CredentialsCheckError) => {
     logger.error("Could not set session", { error });
     if ("failedAttempts" in error && error.failedAttempts) {
@@ -207,13 +187,20 @@ export async function setSessionAndUpdateCookie(command: {
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
 
+  const current = await getSession({
+    serviceConfig,
+    sessionId: command.recentCookie.id,
+    sessionToken: command.recentCookie.token,
+  });
+  if (!current.session) throw new Error("Session not found");
+
   return setSession({
     serviceConfig,
     sessionId: command.recentCookie.id,
     sessionToken: command.recentCookie.token,
     challenges: command.challenges,
     checks: command.checks,
-    lifetime: command.lifetime,
+    lifetime: sessionLifetime(command.lifetime, current.session),
   })
     .then((updatedSession) => {
       if (updatedSession) {
@@ -242,8 +229,8 @@ export async function setSessionAndUpdateCookie(command: {
             const newCookie: CustomCookieData = {
               id: sessionCookie.id,
               token: updatedSession.sessionToken,
-              creationTs: sessionCookie.creationTs,
-              expirationTs: sessionCookie.expirationTs,
+              creationTs: session.creationDate ? `${timestampMs(session.creationDate)}` : "",
+              expirationTs: session.expirationDate ? `${timestampMs(session.expirationDate)}` : "",
               // just overwrite the changeDate with the new one
               changeTs: updatedSession.details?.changeDate ? `${timestampMs(updatedSession.details.changeDate)}` : "",
               loginName: session.factors?.user?.loginName ?? "",

@@ -10,7 +10,7 @@ vi.mock("@zitadel/client", () => ({
   create: vi.fn(),
   Duration: vi.fn(),
   Timestamp: vi.fn(),
-  timestampDate: vi.fn(),
+  timestampDate: (value: any) => new Date(Number(value.seconds) * 1000),
 }));
 
 vi.mock("../service-url", () => ({
@@ -38,10 +38,13 @@ vi.mock("../cookies", () => ({
   getMostRecentSessionCookie: vi.fn(),
 }));
 
-vi.mock("../verify-helper", () => ({
+vi.mock("../verify-helper", async (original) => ({
+  ...(await original<typeof import("../verify-helper")>()),
   checkEmailVerification: vi.fn(),
   checkUserVerification: vi.fn(),
 }));
+
+vi.mock("../credential-enrollment", () => ({ getEnrollmentProof: vi.fn(), consumeEnrollmentProof: vi.fn() }));
 
 vi.mock("./host", () => ({
   getPublicHost: vi.fn(),
@@ -296,6 +299,8 @@ describe("sendPasskey", () => {
       });
       mockSetSessionAndUpdateCookie.mockResolvedValue({
         id: "session-123",
+        creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+        expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
         factors: {
           user: {
             id: "user-123",
@@ -370,6 +375,8 @@ describe("sendPasskey", () => {
       });
       mockSetSessionAndUpdateCookie.mockResolvedValue({
         id: "session-123",
+        creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+        expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
         factors: {
           user: {
             id: "user-123",
@@ -429,6 +436,8 @@ describe("sendPasskey", () => {
       });
       mockSetSessionAndUpdateCookie.mockResolvedValue({
         id: "session-123",
+        creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+        expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
         factors: {
           user: {
             id: "user-123",
@@ -523,6 +532,8 @@ describe("registerPasskeyLink", () => {
     mockHeaders.mockResolvedValue(headersList);
     mockGetServiceConfig.mockReturnValue({ serviceConfig: { baseUrl: "https://example.com" } });
     mockGetPublicHost.mockReturnValue("test.com");
+    const { getLoginSettings } = await import("../zitadel");
+    vi.mocked(getLoginSettings).mockResolvedValue({ forceMfa: false, forceMfaLocalOnly: false } as any);
   });
 
   test("should return error when neither sessionId nor userId is provided", async () => {
@@ -547,10 +558,16 @@ describe("registerPasskeyLink", () => {
     const idpSession = {
       session: {
         id: "session-123",
+        creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+        expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
         factors: {
-          user: { id: "user-123", loginName: "max@zitadel.com" },
+          user: {
+            id: "user-123",
+            loginName: "max@zitadel.com",
+            verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000) - 1), nanos: 0 },
+          },
           intent: {
-            verifiedAt: { seconds: BigInt(1700000000), nanos: 0 },
+            verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000)), nanos: 0 },
           },
         },
       },
@@ -596,6 +613,41 @@ describe("registerPasskeyLink", () => {
       expect(mockListAuthenticationMethodTypes).not.toHaveBeenCalled();
       expect(mockCheckUserVerification).not.toHaveBeenCalled();
     });
+
+    test("does not mint credential proof when the current provider requires missing MFA", async () => {
+      const { getLoginSettings } = await import("../zitadel");
+      vi.mocked(getLoginSettings).mockResolvedValue({ forceMfa: true, forceMfaLocalOnly: false } as any);
+      mockGetSessionCookieById.mockResolvedValue(sessionCookie);
+      mockGetSession.mockResolvedValue(idpSession);
+      expect(await registerPasskeyLink({ sessionId: "session-123" })).toEqual({
+        error: "Authentication or provider registration code required",
+      });
+      expect(mockCreatePasskeyRegistrationLink).not.toHaveBeenCalled();
+      expect(mockRegisterPasskey).not.toHaveBeenCalled();
+    });
+
+    test("uses protected provider enrollment proof without elevating an account-discovery session", async () => {
+      const { getEnrollmentProof, consumeEnrollmentProof } = await import("../credential-enrollment");
+      mockGetSessionCookieById.mockResolvedValue(sessionCookie);
+      mockGetSession.mockResolvedValue({
+        session: { ...idpSession.session, factors: { user: idpSession.session.factors.user } },
+      });
+      vi.mocked(getEnrollmentProof).mockResolvedValue({
+        sessionId: "session-123",
+        userId: "user-123",
+        code: { id: "verified-id", code: "provider-proof" },
+        expiresAt: Date.now() + 60000,
+      });
+      mockRegisterPasskey.mockResolvedValue({ passkeyId: "passkey-123" });
+      expect(await registerPasskeyLink({ sessionId: "session-123" })).toHaveProperty("passkeyId");
+      expect(getEnrollmentProof).toHaveBeenCalledWith("session-123", "user-123");
+      expect(mockCreatePasskeyRegistrationLink).not.toHaveBeenCalled();
+      expect(mockRegisterPasskey).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "user-123", code: { id: "verified-id", code: "provider-proof" } }),
+      );
+      expect(consumeEnrollmentProof).toHaveBeenCalledOnce();
+      vi.mocked(getEnrollmentProof).mockReset();
+    });
   });
 
   describe("password-authenticated session", () => {
@@ -608,10 +660,16 @@ describe("registerPasskeyLink", () => {
       mockGetSession.mockResolvedValue({
         session: {
           id: "session-123",
+          creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+          expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
           factors: {
-            user: { id: "user-123", loginName: "max@zitadel.com" },
+            user: {
+              id: "user-123",
+              loginName: "max@zitadel.com",
+              verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000) - 1), nanos: 0 },
+            },
             password: {
-              verifiedAt: { seconds: BigInt(1700000000), nanos: 0 },
+              verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000)), nanos: 0 },
             },
           },
         },
@@ -640,8 +698,14 @@ describe("registerPasskeyLink", () => {
       mockGetSession.mockResolvedValue({
         session: {
           id: "session-123",
+          creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+          expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
           factors: {
-            user: { id: "user-123", loginName: "max@zitadel.com" },
+            user: {
+              id: "user-123",
+              loginName: "max@zitadel.com",
+              verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000) - 1), nanos: 0 },
+            },
             // No password, no webAuthN, no intent
           },
         },
@@ -653,7 +717,7 @@ describe("registerPasskeyLink", () => {
       const result = await registerPasskeyLink({ sessionId: "session-123" });
 
       expect(result).toEqual({
-        error: "You have to authenticate or have a valid User Verification Check",
+        error: "Authentication or provider registration code required",
       });
     });
 
@@ -666,8 +730,14 @@ describe("registerPasskeyLink", () => {
       mockGetSession.mockResolvedValue({
         session: {
           id: "session-123",
+          creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+          expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
           factors: {
-            user: { id: "user-123", loginName: "max@zitadel.com" },
+            user: {
+              id: "user-123",
+              loginName: "max@zitadel.com",
+              verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000) - 1), nanos: 0 },
+            },
           },
         },
       });
@@ -679,12 +749,12 @@ describe("registerPasskeyLink", () => {
       const result = await registerPasskeyLink({ sessionId: "session-123" });
 
       expect(result).toEqual({
-        error: "User Verification Check has to be done",
+        error: "Authentication or provider registration code required",
       });
-      expect(mockCheckUserVerification).toHaveBeenCalledWith("user-123");
+      expect(mockCheckUserVerification).not.toHaveBeenCalled();
     });
 
-    test("should proceed when session has no factors but user verification passes", async () => {
+    test("rejects account discovery even when the former cookie check is mocked as valid", async () => {
       mockGetSessionCookieById.mockResolvedValue({
         id: "session-123",
         token: "session-token",
@@ -693,8 +763,14 @@ describe("registerPasskeyLink", () => {
       mockGetSession.mockResolvedValue({
         session: {
           id: "session-123",
+          creationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) - 5), nanos: 0 },
+          expirationDate: { seconds: BigInt(Math.floor(Date.now() / 1000) + 3600), nanos: 0 },
           factors: {
-            user: { id: "user-123", loginName: "max@zitadel.com" },
+            user: {
+              id: "user-123",
+              loginName: "max@zitadel.com",
+              verifiedAt: { seconds: BigInt(Math.floor(Date.now() / 1000) - 1), nanos: 0 },
+            },
           },
         },
       });
@@ -712,7 +788,8 @@ describe("registerPasskeyLink", () => {
 
       const result = await registerPasskeyLink({ sessionId: "session-123" });
 
-      expect(result).toHaveProperty("passkeyId");
+      expect(result).toEqual({ error: "Authentication or provider registration code required" });
+      expect(mockCreatePasskeyRegistrationLink).not.toHaveBeenCalled();
     });
   });
 });

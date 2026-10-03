@@ -2,11 +2,14 @@ import { isSafeRedirectUri } from "@/lib/client-utils";
 import { Cookie } from "@/lib/cookies";
 import { isClassifiedError } from "@/lib/grpc/interceptors/error-classification";
 import { sendLoginname, SendLoginnameCommand } from "@/lib/server/loginname";
-import { createCallback, getLoginSettings, ServiceConfig } from "@/lib/zitadel";
+import { createCallback, getAuthRequest, getLoginSettings, getUserByID, ServiceConfig } from "@/lib/zitadel";
 import { Code, create } from "@zitadel/client";
 import { CreateCallbackRequestSchema, SessionSchema } from "@zitadel/proto/zitadel/oidc/v2/oidc_service_pb";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
+import { satisfiesAuthorizationFreshness } from "./authentication-policy";
 import { isSessionValid } from "./session";
+import { workforceEligible, workforcePolicy } from "./workforce-policy";
+import { readWorkforceState } from "./workforce-state";
 
 type LoginWithOIDCAndSession = {
   serviceConfig: ServiceConfig;
@@ -25,11 +28,41 @@ export async function loginWithOIDCAndSession({
   const selectedSession = sessions.find((s) => s.id === sessionId);
 
   if (selectedSession && selectedSession.id) {
-    const isValid = await isSessionValid({ serviceConfig, session: selectedSession });
+    let authenticationClass: "workforce_limited" | undefined;
+    const response = await getAuthRequest({ serviceConfig, authRequestId: authRequest });
+    const request = response?.authRequest;
+    if (!request) return { error: "Session not found or invalid" };
+    if (process.env.PAYPM_WORKFORCE_OIDC_CLIENT_IDS) {
+      const registered = process.env.PAYPM_WORKFORCE_OIDC_CLIENT_IDS.split(",")
+        .map((id) => id.trim())
+        .includes(request.clientId);
+      if (registered) {
+        const policy = workforcePolicy();
+        if (!policy || selectedSession.factors?.user?.organizationId !== policy.organizationId)
+          return { error: "Workforce authentication unavailable" };
+        const { user } = await getUserByID({ serviceConfig, userId: selectedSession.factors.user.id });
+        if (!user || !(await workforceEligible(user, request.clientId, "login")))
+          return { error: "Workforce authentication unavailable" };
+        const admission = await readWorkforceState();
+        if (
+          policy.emailOtpReady &&
+          admission?.purpose === "limited-admission" &&
+          admission.sessionId === selectedSession.id &&
+          admission.userId === selectedSession.factors.user.id &&
+          admission.clientId === request.clientId &&
+          admission.requestId === `oidc_${authRequest}`
+        )
+          authenticationClass = "workforce_limited";
+      }
+    }
+    const isValid =
+      (await isSessionValid({ serviceConfig, session: selectedSession, authenticationClass })) &&
+      satisfiesAuthorizationFreshness(selectedSession, request, authenticationClass === "workforce_limited");
 
     console.log("Session is valid:", isValid);
 
-    if (!isValid && selectedSession.factors?.user) {
+    if (!isValid) {
+      if (!selectedSession.factors?.user) return { error: "Session not found or invalid" };
       // if the session is not valid anymore, we need to redirect the user to re-authenticate /
       // TODO: handle IDP intent direcly if available
       const command: SendLoginnameCommand = {
@@ -43,6 +76,7 @@ export async function loginWithOIDCAndSession({
       if (res && "redirect" in res && res?.redirect) {
         return { redirect: res.redirect };
       }
+      return { error: "Session not found or invalid" };
     }
 
     const cookie = sessionCookies.find((cookie) => cookie.id === selectedSession?.id);

@@ -170,11 +170,9 @@ export async function getLoginSettings({
       .then((resp) => (resp.settings ? resp.settings : undefined));
   };
 
-  return freshCache(
-    instanceCacheKey(serviceConfig, `getLoginSettings-${organization || "instance"}`),
-    fetcher,
-    getTTLForKey("getLoginSettings", defaultCacheTTL),
-  );
+  // Login policy is an authority decision. Fetch current settings; the shared
+  // presentation cache can otherwise retain a revoked policy for 15 minutes.
+  return fetcher();
 }
 
 export async function getSecuritySettings({ serviceConfig }: WithServiceConfig) {

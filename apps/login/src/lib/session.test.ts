@@ -42,7 +42,8 @@ describe("isSessionValid", () => {
   const mockOrganizationId = "test-org-id";
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    vi.mocked(zitadelModule.getLoginSettings).mockResolvedValue({ forceMfa: false, forceMfaLocalOnly: false } as any);
     process.env = { ...originalEnv };
     // @ts-ignore - delete is OK for test environment variables
     delete process.env.EMAIL_VERIFICATION;
@@ -66,7 +67,7 @@ describe("isSessionValid", () => {
     process.env = originalEnv;
   });
 
-  const createMockTimestamp = (offsetMs = 3600000): any => ({
+  const createMockTimestamp = (offsetMs = 0): any => ({
     seconds: BigInt(Math.floor((Date.now() + offsetMs) / 1000)),
   });
 
@@ -75,7 +76,8 @@ describe("isSessionValid", () => {
 
     const defaultSession = {
       id: "session-id",
-      expirationDate: futureTimestamp,
+      creationDate: createMockTimestamp(-1000),
+      expirationDate: createMockTimestamp(3600000),
       factors: {
         user: {
           id: mockUserId,
@@ -125,7 +127,6 @@ describe("isSessionValid", () => {
 
       expect(result).toBe(false);
       expect(result).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith("[Session] Session is expired", expect.any(String));
       consoleSpy.mockRestore();
     });
   });
@@ -1132,7 +1133,7 @@ describe("isSessionValid", () => {
 
       const result = await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     test("should handle session with null expirationDate", async () => {
@@ -1164,7 +1165,7 @@ describe("isSessionValid", () => {
 
       const result = await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     test("should handle session expiring exactly now", async () => {
@@ -1198,7 +1199,6 @@ describe("isSessionValid", () => {
 
       // Session expiring exactly now should be considered expired
       expect(result).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith("[Session] Session is expired", expect.any(String));
       consoleSpy.mockRestore();
     });
 
@@ -1227,7 +1227,7 @@ describe("isSessionValid", () => {
       vi.mocked(zitadelModule.getLoginSettings).mockRejectedValue(new Error("API connection failed"));
 
       // Should throw or handle error appropriately
-      await expect(isSessionValid({ serviceUrl: mockServiceUrl, session })).rejects.toThrow();
+      await expect(isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session })).rejects.toThrow();
     });
 
     test("should handle API errors gracefully when listing auth method types", async () => {
@@ -1247,11 +1247,12 @@ describe("isSessionValid", () => {
         },
       });
 
+      vi.mocked(verifyHelperModule.shouldEnforceMFA).mockReturnValue(true);
       // Simulate API error
       vi.mocked(zitadelModule.listAuthenticationMethodTypes).mockRejectedValue(new Error("API connection failed"));
 
       // Should throw or handle error appropriately
-      await expect(isSessionValid({ serviceUrl: mockServiceUrl, session })).rejects.toThrow();
+      await expect(isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session })).rejects.toThrow();
     });
 
     test("should handle malformed timestamp in session", async () => {
@@ -1342,7 +1343,7 @@ describe("isSessionValid", () => {
         seconds: BigInt(Math.floor((Date.now() - 10 * 365 * 24 * 60 * 60 * 1000) / 1000)),
       };
 
-      const futureExpiration = createMockTimestamp();
+      const futureExpiration = createMockTimestamp(3600000);
 
       const session = createMockSession({
         expirationDate: futureExpiration,
@@ -1369,10 +1370,10 @@ describe("isSessionValid", () => {
         forceMfaLocalOnly: false,
       } as any);
 
-      // Old verification timestamps are still valid as long as session hasn't expired
+      // Factors cannot predate the bounded provider session.
       const result = await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     test("should handle session with future verifiedAt timestamps", async () => {
@@ -1406,7 +1407,7 @@ describe("isSessionValid", () => {
       // Future timestamps should still be considered valid
       const result = await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     test("should handle concurrent calls to isSessionValid", async () => {
@@ -1438,7 +1439,7 @@ describe("isSessionValid", () => {
       // Make multiple concurrent calls
       const promises = Array(5)
         .fill(null)
-        .map(() => isSessionValid({ serviceUrl: mockServiceUrl, session }));
+        .map(() => isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session }));
 
       const results = await Promise.all(promises);
 

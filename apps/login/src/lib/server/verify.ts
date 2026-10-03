@@ -3,6 +3,7 @@
 import { createLogger } from "@/lib/logger";
 import {
   createInviteCode,
+  createPasskeyRegistrationLink,
   getLoginSettings,
   getSession,
   getUserByID,
@@ -12,20 +13,20 @@ import {
   verifyTOTPRegistration,
   sendEmailCode as zitadelSendEmailCode,
 } from "@/lib/zitadel";
-import crypto from "crypto";
 
 import { create } from "@zitadel/client";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { ChecksSchema } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import { getTranslations } from "next-intl/server";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { completeFlowOrGetUrl } from "../client";
 import { getSessionCookieByLoginName } from "../cookies";
-import { getOrSetFingerprintId } from "../fingerprint";
+import { encryptEnrollmentProof, storeEnrollmentProof } from "../credential-enrollment";
 import { getServiceConfig } from "../service-url";
 import { loadMostRecentSession } from "../session";
 import { checkMFAFactors } from "../verify-helper";
+import { workforceEligible, workforceRequestClient } from "../workforce-policy";
 import { createSessionAndUpdateCookie } from "./cookie";
 import { getPublicHostWithProtocol } from "./host";
 
@@ -90,6 +91,17 @@ export async function sendVerification(command: VerifyUserByEmailCommand) {
   }
 
   const user = userResponse.user;
+  const loginSettings = await getLoginSettings({ serviceConfig, organization: user.details?.resourceOwner });
+  if (!loginSettings?.allowLocalAuthentication) return { error: t("errors.couldNotVerify") };
+
+  if (
+    process.env.PAYPM_WORKFORCE_ORGANIZATION_ID &&
+    user.details?.resourceOwner === process.env.PAYPM_WORKFORCE_ORGANIZATION_ID
+  ) {
+    const clientId = await workforceRequestClient(serviceConfig, command.requestId);
+    if (!command.isInvite || !clientId || !(await workforceEligible(user, clientId, "enrollment")))
+      return { error: t("errors.couldNotVerify") };
+  }
 
   const sessionCookie = await getSessionCookieByLoginName({
     loginName: command.loginName ?? user.preferredLoginName,
@@ -109,6 +121,7 @@ export async function sendVerification(command: VerifyUserByEmailCommand) {
         return undefined;
       });
   }
+  if (session?.factors?.user?.id !== user.userId) session = undefined;
 
   // load auth methods for user
   const authMethodResponse = await listAuthenticationMethodTypes({ serviceConfig, userId: user.userId });
@@ -131,8 +144,8 @@ export async function sendVerification(command: VerifyUserByEmailCommand) {
       const checks = create(ChecksSchema, {
         user: {
           search: {
-            case: "loginName",
-            value: userResponse.user.preferredLoginName,
+            case: "userId",
+            value: user.userId,
           },
         },
       });
@@ -144,37 +157,41 @@ export async function sendVerification(command: VerifyUserByEmailCommand) {
       session = result.session;
     }
 
-    if (!session) {
+    if (!session || session.factors?.user?.id !== user.userId) {
       return { error: t("errors.couldNotCreateSession") };
     }
 
+    // Check protected storage before issuing any secret-bearing provider proof.
+    try {
+      encryptEnrollmentProof({
+        sessionId: session.id,
+        userId: user.userId,
+        code: { id: "readiness", code: "readiness" },
+        expiresAt: Date.now() + 300000,
+      });
+    } catch {
+      return { error: t("errors.couldNotVerify") };
+    }
+    const registration = await createPasskeyRegistrationLink({ serviceConfig, userId: user.userId });
+    if (!registration.code?.code || !registration.code.id) return { error: t("errors.couldNotVerify") };
+    // This provider-issued registration proof follows successful invite/email
+    // verification above. It replaces the predictable fingerprint cookie.
     const params = new URLSearchParams({
       sessionId: session.id,
+      loginName: session.factors?.user?.loginName ?? user.preferredLoginName,
     });
-
-    if (session.factors?.user?.loginName) {
-      params.set("loginName", session.factors?.user?.loginName);
-    }
+    await storeEnrollmentProof({
+      sessionId: session.id,
+      userId: user.userId,
+      code: registration.code,
+      expiresAt: Date.now() + 300000,
+    });
 
     if (command.requestId) {
       params.set("requestId", command.requestId);
     }
 
-    // set hash of userId and userAgentId to prevent attacks, checks are done for users with invalid sessions and invalid userAgentId
-    const cookiesList = await cookies();
-    const userAgentId = await getOrSetFingerprintId();
-
-    const verificationCheck = crypto.createHash("sha256").update(`${user.userId}:${userAgentId}`).digest("hex");
-
-    await cookiesList.set({
-      name: "verificationCheck",
-      value: verificationCheck,
-      httpOnly: true,
-      path: "/",
-      maxAge: 300, // 5 minutes
-    });
-
-    return { redirect: `/authenticator/set?${params}` };
+    return { redirect: `/passkey/set?${params}` };
   }
 
   // if no session found only show success page,
@@ -201,8 +218,6 @@ export async function sendVerification(command: VerifyUserByEmailCommand) {
 
     return { redirect: `/verify/success?${verifySuccessParams}` };
   }
-
-  const loginSettings = await getLoginSettings({ serviceConfig, organization: user.details?.resourceOwner });
 
   // redirect to mfa factor if user has one, or redirect to set one up
   const mfaFactorCheck = await checkMFAFactors(
