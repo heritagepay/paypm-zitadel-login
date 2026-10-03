@@ -6,10 +6,11 @@ import { createCallback, getAuthRequest, getLoginSettings, getUserByID, ServiceC
 import { Code, create } from "@zitadel/client";
 import { CreateCallbackRequestSchema, SessionSchema } from "@zitadel/proto/zitadel/oidc/v2/oidc_service_pb";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
-import { satisfiesAuthorizationFreshness } from "./authentication-policy";
+import { providerTimestampMs, satisfiesAuthorizationFreshness, verifiedFactor } from "./authentication-policy";
 import { isSessionValid } from "./session";
-import { workforceEligible, workforcePolicy } from "./workforce-policy";
+import { workforceClientMode, workforceEligible, workforcePolicy } from "./workforce-policy";
 import { readWorkforceState } from "./workforce-state";
+import { workforceStore } from "./workforce-store";
 
 type LoginWithOIDCAndSession = {
   serviceConfig: ServiceConfig;
@@ -44,15 +45,42 @@ export async function loginWithOIDCAndSession({
         if (!user || !(await workforceEligible(user, request.clientId, "login")))
           return { error: "Workforce authentication unavailable" };
         const admission = await readWorkforceState();
-        if (
-          policy.emailOtpReady &&
-          admission?.purpose === "limited-admission" &&
-          admission.sessionId === selectedSession.id &&
-          admission.userId === selectedSession.factors.user.id &&
-          admission.clientId === request.clientId &&
-          admission.requestId === `oidc_${authRequest}`
-        )
+        if (policy.emailOtpReady) {
+          const mode = workforceClientMode(request.clientId);
+          if (
+            !mode ||
+            new URL(serviceConfig.baseUrl).origin !== new URL(policy.issuer).origin ||
+            !(
+              admission?.purpose === "limited-admission" &&
+              admission.challengeId &&
+              admission.sessionId === selectedSession.id &&
+              admission.userId === selectedSession.factors.user.id &&
+              admission.clientId === request.clientId &&
+              admission.requestId === `oidc_${authRequest}` &&
+              (await workforceStore().admission(
+                selectedSession.id,
+                selectedSession.factors.user.id,
+                request.clientId,
+                `oidc_${authRequest}`,
+              ))
+            )
+          )
+            return { error: "Workforce authentication unavailable" };
+          if (mode === "fresh_passkey") {
+            const completed = providerTimestampMs(selectedSession.factors?.webAuthN?.verifiedAt),
+              requested = providerTimestampMs(request.creationDate);
+            if (
+              completed === undefined ||
+              requested === undefined ||
+              completed < requested ||
+              Date.now() - completed > 60000 ||
+              selectedSession.factors?.webAuthN?.userVerified !== true ||
+              !verifiedFactor(selectedSession, selectedSession.factors.webAuthN.verifiedAt)
+            )
+              return { error: "Fresh workforce passkey required" };
+          }
           authenticationClass = "workforce_limited";
+        }
       }
     }
     const isValid =

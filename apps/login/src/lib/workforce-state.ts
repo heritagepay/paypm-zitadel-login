@@ -12,6 +12,7 @@ export type WorkforceState = {
   requestId: string;
   issuedAt: number;
   expiresAt: number;
+  challengeId?: string;
 };
 
 function flowKey(): Buffer {
@@ -37,6 +38,7 @@ export function decodeWorkforceState(value: string | undefined, now = Date.now()
     if (received.length !== expected.length || !timingSafeEqual(received, expected)) return undefined;
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as WorkforceState;
     if (!["email-challenge", "limited-admission", "passkey-challenge"].includes(state.purpose)) return undefined;
+    if (state.challengeId !== undefined && !/^[0-9a-f-]{36}$/.test(state.challengeId)) return undefined;
     if (
       ![state.sessionId, state.userId, state.clientId, state.requestId].every(
         (field) => typeof field === "string" && field.length > 0 && field.length <= 500,
@@ -80,4 +82,8 @@ export async function writeWorkforceState(state: WorkforceState) {
 export async function readWorkforceState() {
   const jar = await cookies();
   return decodeWorkforceState(jar.get("paypm_workforce_flow")?.value);
+}
+export async function deleteWorkforceState() {
+  const jar = await cookies();
+  jar.delete("paypm_workforce_flow");
 }

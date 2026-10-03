@@ -1,11 +1,15 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { UserVerificationRequirement } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
 import { createHash } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSessionCookieById } from "../cookies";
+import { ClassifiedConnectError } from "../grpc/interceptors/error-classification";
 import { deleteActionState, getActionState, storeActionState } from "../workforce-action-state";
+import { workforceAssertionHash } from "../workforce-assertion";
 import { workforceIdentityRequest } from "../workforce-identity-client";
 import { workforceEligible } from "../workforce-policy";
 import { readWorkforceState } from "../workforce-state";
+import { workforceStore } from "../workforce-store";
 import { createSessionFromChecksAndChallenges, getSession, getUserByID, setSession } from "../zitadel";
 import { completeWorkforceAction, startWorkforceAction } from "./workforce-action";
 vi.mock("next/headers", () => ({ headers: vi.fn(() => new Headers()) }));
@@ -18,6 +22,7 @@ vi.mock("../zitadel", () => ({
 }));
 vi.mock("../cookies", () => ({ getSessionCookieById: vi.fn() }));
 vi.mock("../workforce-state", () => ({ readWorkforceState: vi.fn() }));
+vi.mock("../workforce-store", () => ({ workforceStore: vi.fn() }));
 vi.mock("../workforce-action-state", async (original) => ({
   ...(await original<typeof import("../workforce-action-state")>()),
   getActionState: vi.fn(),
@@ -84,6 +89,7 @@ beforeEach(() => {
   vi.stubEnv("PAYPM_WORKFORCE_PASSKEY_RP_ID", "login.paypm.test");
   vi.mocked(readWorkforceState).mockResolvedValue({
     purpose: "limited-admission",
+    challengeId: requestId,
     sessionId: "123",
     userId: "700",
     clientId: "identity-client",
@@ -91,6 +97,12 @@ beforeEach(() => {
     issuedAt: Date.now() - 10000,
     expiresAt: Date.now() + 28000000,
   });
+  vi.mocked(workforceStore).mockReturnValue({
+    admission: vi.fn(async () => true),
+    passkeyAttempt: vi.fn(async () => ({ first: true })),
+    passkeyAttemptVerified: vi.fn(),
+    passkeyAttemptFailed: vi.fn(),
+  } as any);
   vi.mocked(getSessionCookieById).mockResolvedValue({
     id: "123",
     token: "must-not-return",
@@ -178,6 +190,9 @@ describe("fresh workforce action ceremony producer", () => {
       .mockResolvedValueOnce({
         session: {
           id: "456",
+          metadata: {
+            ["paypm_workforce_passkey_request_" + requestId]: new TextEncoder().encode(workforceAssertionHash(signed)),
+          },
           creationDate: ts(-2000),
           expirationDate: ts(298000),
           factors: {
@@ -198,17 +213,51 @@ describe("fresh workforce action ceremony producer", () => {
     );
     expect(deleteActionState).toHaveBeenCalled();
   });
+  it("recovers a lost Identity completion response through exact provider marker readback without repeating the assertion", async () => {
+    const signed = assertion(),
+      completed = {
+        id: "456",
+        creationDate: ts(-2000),
+        expirationDate: ts(298000),
+        metadata: {
+          ["paypm_workforce_passkey_request_" + requestId]: new TextEncoder().encode(workforceAssertionHash(signed)),
+        },
+        factors: {
+          user: { id: "700", organizationId: "300", verifiedAt: ts(-1000) },
+          webAuthN: { verifiedAt: ts(0), userVerified: true },
+        },
+      };
+    vi.mocked(getSession).mockImplementation(
+      async (command) => ({ session: command.sessionId === "123" ? base() : completed }) as any,
+    );
+    const store = vi.mocked(workforceStore).mock.results[0]?.value ?? workforceStore();
+    store.passkeyAttempt.mockResolvedValueOnce({ first: true }).mockResolvedValue({ first: false });
+    vi.mocked(setSession).mockResolvedValue({ sessionToken: "rotated-provider-token" } as any);
+    vi.mocked(workforceIdentityRequest)
+      .mockRejectedValueOnce(new Error("lost Identity reply"))
+      .mockResolvedValue({ receipt: "paypm-wf1.exact.original", expiresAt: new Date(Date.now() + 60000).toISOString() });
+    expect(await completeWorkforceAction({ requestId, assertion: signed })).toHaveProperty("error");
+    expect(deleteActionState).not.toHaveBeenCalled();
+    expect(await completeWorkforceAction({ requestId, assertion: signed })).toHaveProperty("receipt");
+    expect(setSession).toHaveBeenCalledTimes(1);
+  });
   it.each(["provider-rejection", "provider-missing-uv", "provider-wrong-person", "provider-stale"])(
     "denies %s before receipt issuance",
     async (kind) => {
       const signed = assertion();
       vi.mocked(setSession).mockResolvedValue({ sessionToken: "rotated-provider-token" } as any);
-      if (kind === "provider-rejection") vi.mocked(setSession).mockRejectedValue(new Error("provider rejected signature"));
+      if (kind === "provider-rejection")
+        vi.mocked(setSession).mockRejectedValue(
+          new ClassifiedConnectError(new ConnectError("provider rejected signature", Code.Unauthenticated)),
+        );
       vi.mocked(getSession)
         .mockResolvedValueOnce({ session: base() } as any)
         .mockResolvedValueOnce({
           session: {
             id: "456",
+            metadata: {
+              ["paypm_workforce_passkey_request_" + requestId]: new TextEncoder().encode(workforceAssertionHash(signed)),
+            },
             creationDate: ts(-120000),
             expirationDate: ts(180000),
             factors: {

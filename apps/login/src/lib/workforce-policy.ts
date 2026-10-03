@@ -20,6 +20,34 @@ export interface WorkforceEligibilityAdapter {
   }): Promise<WorkforceEligibility | undefined>;
 }
 
+/** Explicit callback admission only; native resource/action roles remain with each owning console. */
+export function workforceClientMode(clientId: string): "limited" | "fresh_passkey" | undefined {
+  const policy = workforcePolicy();
+  if (!policy) return undefined;
+  try {
+    const rows: unknown = JSON.parse(process.env.PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON ?? "null");
+    if (!Array.isArray(rows) || rows.length !== policy.clientIds.length) return undefined;
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (
+        !row ||
+        typeof row !== "object" ||
+        Array.isArray(row) ||
+        Object.keys(row).sort().join(",") !== "clientId,mode" ||
+        typeof row.clientId !== "string" ||
+        !policy.clientIds.includes(row.clientId) ||
+        seen.has(row.clientId) ||
+        !["limited", "fresh_passkey"].includes(row.mode)
+      )
+        return undefined;
+      seen.add(row.clientId);
+    }
+    return rows.find((row) => row.clientId === clientId)?.mode;
+  } catch {
+    return undefined;
+  }
+}
+
 export function workforcePolicy() {
   const organizationId = process.env.PAYPM_WORKFORCE_ORGANIZATION_ID;
   const issuer = process.env.PAYPM_WORKFORCE_ISSUER;

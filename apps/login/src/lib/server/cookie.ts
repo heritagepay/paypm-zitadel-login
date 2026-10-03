@@ -17,6 +17,7 @@ import { Checks } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import { headers } from "next/headers";
 import { sessionLifetime } from "../authentication-policy";
 import { getServiceConfig } from "../service-url";
+import { denyUnreservedWorkforceOtp } from "../workforce-otp-boundary";
 
 const logger = createLogger("cookie");
 
@@ -53,6 +54,13 @@ export async function createSessionAndUpdateCookie(command: {
 }): Promise<{ session: Session; sessionCookie: CustomCookieData; challenges?: Challenges }> {
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
+
+  await denyUnreservedWorkforceOtp({
+    serviceConfig,
+    requestId: command.requestId,
+    checks: command.checks,
+    challenges: command.challenges,
+  });
 
   const createdSession = await createSessionFromChecksAndChallenges({
     serviceConfig,
@@ -193,6 +201,14 @@ export async function setSessionAndUpdateCookie(command: {
     sessionToken: command.recentCookie.token,
   });
   if (!current.session) throw new Error("Session not found");
+
+  await denyUnreservedWorkforceOtp({
+    serviceConfig,
+    requestId: command.requestId,
+    checks: command.checks,
+    challenges: command.challenges,
+    session: current.session,
+  });
 
   return setSession({
     serviceConfig,

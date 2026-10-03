@@ -1,154 +1,280 @@
 import { UserState } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { completeFlowOrGetUrl } from "../client";
-import { getSessionCookieById } from "../cookies";
+import { addSessionToCookie, getSessionCookieById } from "../cookies";
+import { WorkforceProvider, workforceProvider } from "../workforce-provider";
 import { readWorkforceState, writeWorkforceState } from "../workforce-state";
-import {
-  getAuthRequest,
-  getLoginSettings,
-  getSession,
-  getUserByID,
-  listAuthenticationMethodTypes,
-  listUsers,
-} from "../zitadel";
-import { createSessionAndUpdateCookie, setSessionAndUpdateCookie } from "./cookie";
-import { startWorkforceEmailOtp, verifyWorkforceEmailOtp } from "./workforce-email";
+import { workforceStore, WorkforceStoreError, type WorkforceAttempt, type WorkforceChallenge } from "../workforce-store";
+import { getAuthRequest, getLoginSettings, getUserByID, listAuthenticationMethodTypes, listUsers } from "../zitadel";
+import { resendWorkforceEmailOtp, startWorkforceEmailOtp, verifyWorkforceEmailOtp } from "./workforce-email";
 vi.mock("next/headers", () => ({ headers: vi.fn(() => new Headers()) }));
 vi.mock("../service-url", () => ({ getServiceConfig: () => ({ serviceConfig: { baseUrl: "https://auth.example.com" } }) }));
 vi.mock("../zitadel", () => ({
   getAuthRequest: vi.fn(),
   getLoginSettings: vi.fn(),
-  getSession: vi.fn(),
   getUserByID: vi.fn(),
   listAuthenticationMethodTypes: vi.fn(),
   listUsers: vi.fn(),
 }));
-vi.mock("./cookie", () => ({ createSessionAndUpdateCookie: vi.fn(), setSessionAndUpdateCookie: vi.fn() }));
-vi.mock("../cookies", () => ({ getSessionCookieById: vi.fn() }));
+vi.mock("../cookies", () => ({ getSessionCookieById: vi.fn(), addSessionToCookie: vi.fn() }));
 vi.mock("../workforce-state", async (original) => ({
   ...(await original<typeof import("../workforce-state")>()),
   readWorkforceState: vi.fn(),
   writeWorkforceState: vi.fn(),
 }));
+vi.mock("../workforce-store", async (original) => ({
+  ...(await original<typeof import("../workforce-store")>()),
+  workforceStore: vi.fn(),
+}));
+vi.mock("../workforce-provider", async (original) => ({
+  ...(await original<typeof import("../workforce-provider")>()),
+  workforceProvider: vi.fn(),
+}));
 vi.mock("../client", () => ({ completeFlowOrGetUrl: vi.fn() }));
-
-const timestamp = (offset: number) => ({ seconds: BigInt(Math.floor((Date.now() + offset) / 1000)), nanos: 0 });
+vi.mock("../fingerprint", () => ({ getUserAgent: vi.fn(() => ({})) }));
+const ts = (offset: number) => {
+  const n = Date.now() + offset;
+  return { seconds: BigInt(Math.floor(n / 1000)), nanos: (n % 1000) * 1000000 };
+};
 const user = {
   userId: "12345",
   state: UserState.ACTIVE,
   details: { resourceOwner: "54321" },
   type: { case: "human", value: { email: { email: "staff@example.com", isVerified: true } } },
 } as any;
-const session = () =>
-  ({
-    id: "provider-session",
-    creationDate: timestamp(-1000),
-    expirationDate: timestamp(28800000),
-    factors: {
-      user: { id: "12345", organizationId: "54321", loginName: "staff@example.com", verifiedAt: timestamp(-1000) },
-    },
-  }) as any;
+let row: WorkforceChallenge, attempt: WorkforceAttempt, current: any, store: any, api: any;
+const command = () => ({ email: "staff@example.com", requestId: "oidc_request", operationKey: randomUUID() });
+const verify = () => ({
+  sessionId: "provider-session",
+  requestId: "oidc_request",
+  operationKey: randomUUID(),
+  code: "123456",
+});
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.stubEnv("PAYPM_WORKFORCE_ORGANIZATION_ID", "54321");
-  vi.stubEnv("PAYPM_WORKFORCE_ISSUER", "https://auth.example.com");
-  vi.stubEnv("PAYPM_WORKFORCE_OIDC_CLIENT_IDS", "workforce-client");
-  vi.stubEnv("PAYPM_WORKFORCE_EMAIL_OTP_READY", "true");
-  vi.stubEnv("PAYPM_WORKFORCE_BOOTSTRAP_MODE", "qualification");
-  vi.stubEnv("PAYPM_WORKFORCE_BOOTSTRAP_INVITED_USER_IDS", "12345");
-  vi.stubEnv("PAYPM_WORKFORCE_FLOW_KEY_BASE64", Buffer.alloc(32, 6).toString("base64"));
+  for (const [key, value] of Object.entries({
+    PAYPM_WORKFORCE_ORGANIZATION_ID: "54321",
+    PAYPM_WORKFORCE_ISSUER: "https://auth.example.com",
+    PAYPM_WORKFORCE_OIDC_CLIENT_IDS: "workforce-client",
+    PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON: JSON.stringify([{ clientId: "workforce-client", mode: "limited" }]),
+    PAYPM_WORKFORCE_EMAIL_OTP_READY: "true",
+    PAYPM_WORKFORCE_BOOTSTRAP_MODE: "qualification",
+    PAYPM_WORKFORCE_BOOTSTRAP_INVITED_USER_IDS: "12345",
+    PAYPM_WORKFORCE_FLOW_KEY_BASE64: Buffer.alloc(32, 6).toString("base64"),
+  }))
+    vi.stubEnv(key, value);
+  row = {
+    id: randomUUID(),
+    operation_key: randomUUID(),
+    issuer: "https://auth.example.com",
+    provider_subject: "12345",
+    client_id: "workforce-client",
+    request_id: "oidc_request",
+    contact_hash: "a".repeat(64),
+    request_hash: "b".repeat(64),
+    epoch: "0",
+    state: "session_pending",
+    provider_session_id: null,
+    provider_token_sealed: null,
+    created_at: new Date(Date.now() - 2000),
+    expires_at: new Date(Date.now() + 298000),
+    issued_at: null,
+    verified_at: null,
+  };
+  attempt = {
+    id: randomUUID(),
+    operation_key: randomUUID(),
+    challenge_id: row.id,
+    code_hash: "c".repeat(64),
+    state: "pending",
+    created_at: new Date(Date.now() - 500),
+    completed_at: null,
+  };
+  current = {
+    id: "provider-session",
+    creationDate: ts(-1000),
+    expirationDate: ts(28000000),
+    metadata: { paypm_workforce_challenge: new TextEncoder().encode(row.id) },
+    factors: { user: { id: "12345", organizationId: "54321", loginName: "staff@example.com", verifiedAt: ts(-900) } },
+  };
+  api = {
+    createSession: vi.fn(async () => ({ sessionId: current.id, sessionToken: "must-not-return" })),
+    getSession: vi.fn(async () => ({ session: current })),
+    listSessions: vi.fn(async () => ({ sessions: [current], details: { totalResult: 1n } })),
+    setSession: vi.fn(async (input: any) => {
+      Object.assign(current.metadata, input.metadata);
+      if (input.checks?.otpEmail) current.factors.otpEmail = { verifiedAt: ts(0) };
+      return { sessionToken: "must-not-return" };
+    }),
+    deleteSession: vi.fn(),
+  };
+  store = {
+    reserve: vi.fn(async () => row),
+    pendingRevocations: vi.fn(async () => []),
+    revocationCompleted: vi.fn(),
+    claimSession: vi.fn(async () => true),
+    claimDelivery: vi.fn(async () => true),
+    orphanedSession: vi.fn(),
+    session: vi.fn(async (_id: string, id: string) => {
+      row.provider_session_id = id;
+      if (row.state === "session_pending") row.state = "delivery_pending";
+      return row;
+    }),
+    issued: vi.fn(async () => {
+      row.state = "issued";
+      row.issued_at = new Date(Date.now() - 200);
+      return row;
+    }),
+    token: vi.fn(() => "must-not-return"),
+    challenge: vi.fn(async () => row),
+    attempt: vi.fn(async () => ({ ...attempt, first: true })),
+    failed: vi.fn(),
+    verified: vi.fn(async () => {
+      row.state = "verified";
+      return row;
+    }),
+    admission: vi.fn(async () => true),
+  };
+  vi.mocked(workforceStore).mockReturnValue(store);
+  vi.mocked(workforceProvider).mockResolvedValue(new WorkforceProvider(api, "54321"));
   vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "workforce-client" } } as any);
   vi.mocked(listUsers).mockResolvedValue({ result: [user] } as any);
+  vi.mocked(getUserByID).mockResolvedValue({ user } as any);
   vi.mocked(getLoginSettings).mockResolvedValue({ allowLocalAuthentication: true } as any);
   vi.mocked(listAuthenticationMethodTypes).mockResolvedValue({
     authMethodTypes: [AuthenticationMethodType.OTP_EMAIL],
   } as any);
-  vi.mocked(createSessionAndUpdateCookie).mockResolvedValue({
-    session: session(),
-    sessionCookie: { token: "must-not-return" },
-    challenges: { otpEmail: "must-not-return" },
+  vi.mocked(getSessionCookieById).mockResolvedValue({
+    id: current.id,
+    token: "must-not-return",
+    requestId: row.request_id,
   } as any);
+  vi.mocked(completeFlowOrGetUrl).mockResolvedValue({ redirect: "https://app.example.com/callback" });
 });
 afterEach(() => vi.unstubAllEnvs());
-
-describe("headless workforce email-primary flow", () => {
-  it("keeps readiness disabled until the owning privilege gates are qualified", async () => {
-    vi.stubEnv("PAYPM_WORKFORCE_EMAIL_OTP_READY", "false");
-    expect(await startWorkforceEmailOtp({ email: "staff@example.com", requestId: "oidc_request" })).toHaveProperty("error");
-    expect(createSessionAndUpdateCookie).not.toHaveBeenCalled();
+async function issued() {
+  await startWorkforceEmailOtp(command());
+  vi.mocked(readWorkforceState).mockResolvedValue({
+    purpose: "email-challenge",
+    challengeId: row.id,
+    sessionId: current.id,
+    userId: row.provider_subject,
+    clientId: row.client_id,
+    requestId: row.request_id,
+    issuedAt: row.created_at.getTime(),
+    expiresAt: row.expires_at.getTime(),
   });
-  it("sends provider email code only for an invited, verified and already enrolled exact staff user", async () => {
-    const result = await startWorkforceEmailOtp({ email: " Staff@Example.com ", requestId: "oidc_request" });
-    expect(result).toMatchObject({ sessionId: "provider-session", authenticationClass: "workforce_limited" });
+}
+describe("provider-owned workforce email OTP with durable orchestration", () => {
+  it.each([
+    "not-ready",
+    "no-client-policy",
+    "no-invite",
+    "ambiguous",
+    "no-provider-policy",
+    "unenrolled",
+    "no-signing-key",
+    "quota-denied",
+  ])("denies %s before any provider write", async (kind) => {
+    if (kind === "not-ready") vi.stubEnv("PAYPM_WORKFORCE_EMAIL_OTP_READY", "false");
+    if (kind === "no-client-policy") vi.stubEnv("PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON", "");
+    if (kind === "no-invite") vi.stubEnv("PAYPM_WORKFORCE_BOOTSTRAP_INVITED_USER_IDS", "99999");
+    if (kind === "ambiguous") vi.mocked(listUsers).mockResolvedValue({ result: [user, user] } as any);
+    if (kind === "no-provider-policy") vi.mocked(getLoginSettings).mockResolvedValue(undefined);
+    if (kind === "unenrolled") vi.mocked(listAuthenticationMethodTypes).mockResolvedValue({ authMethodTypes: [] } as any);
+    if (kind === "no-signing-key") vi.stubEnv("PAYPM_WORKFORCE_FLOW_KEY_BASE64", "");
+    if (kind === "quota-denied") store.reserve.mockRejectedValue(new WorkforceStoreError("workforce_delivery_rate_limited"));
+    expect(await startWorkforceEmailOtp(command())).toHaveProperty("error");
+    expect(api.createSession).not.toHaveBeenCalled();
+    expect(api.setSession).not.toHaveBeenCalled();
+  });
+  it("reserves before provider issuance and returns only bounded public flow data", async () => {
+    const result = await startWorkforceEmailOtp({ ...command(), email: " Staff@Example.com " });
+    expect(result).toMatchObject({ sessionId: current.id, challengeId: row.id, authenticationClass: "workforce_limited" });
+    expect(store.reserve.mock.invocationCallOrder[0]).toBeLessThan(api.createSession.mock.invocationCallOrder[0]);
     expect(JSON.stringify(result)).not.toContain("must-not-return");
-    expect(vi.mocked(createSessionAndUpdateCookie).mock.calls[0][0].challenges?.otpEmail?.deliveryType.case).toBe(
-      "sendCode",
-    );
+    expect(api.setSession.mock.calls[0][0].challenges.otpEmail.deliveryType.case).toBe("sendCode");
+    expect(writeWorkforceState).toHaveBeenCalledWith(expect.objectContaining({ challengeId: row.id }));
+  });
+  it("reads back an uncertain create instead of creating another provider session", async () => {
+    const input = command();
+    api.createSession.mockRejectedValueOnce(new Error("lost response"));
+    store.claimSession.mockResolvedValueOnce(true).mockResolvedValue(false);
+    expect(await startWorkforceEmailOtp(input)).toHaveProperty("error");
+    expect(await startWorkforceEmailOtp(input)).toHaveProperty("sessionId");
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+    expect(api.listSessions).toHaveBeenCalledTimes(1);
+  });
+  it("reads back flow-bound delivery metadata instead of resending after an uncertain delivery", async () => {
+    const input = command(),
+      apply = api.setSession.getMockImplementation();
+    api.setSession.mockImplementationOnce(async (data: any) => {
+      await apply!(data);
+      throw new Error("lost send result");
+    });
+    store.claimDelivery.mockResolvedValueOnce(true).mockResolvedValue(false);
+    expect(await startWorkforceEmailOtp(input)).toHaveProperty("error");
+    expect(await startWorkforceEmailOtp(input)).toHaveProperty("sessionId");
+    expect(api.setSession.mock.calls.filter(([data]: any) => data.challenges?.otpEmail)).toHaveLength(1);
+  });
+  it("reserves code attempt before provider verification and admits only current accepted exact factors", async () => {
+    await issued();
+    const result = await verifyWorkforceEmailOtp(verify());
+    expect(result).toHaveProperty("redirect");
+    const checks = api.setSession.mock.calls.find(([data]: any) => data.checks?.otpEmail);
+    expect(checks[0].checks.otpEmail.code).toBe("123456");
+    expect(store.attempt.mock.invocationCallOrder[0]).toBeLessThan(api.setSession.mock.invocationCallOrder[1]);
+    expect(store.verified).toHaveBeenCalled();
+    expect(addSessionToCookie).toHaveBeenCalled();
     expect(writeWorkforceState).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "12345", clientId: "workforce-client", requestId: "oidc_request" }),
+      expect.objectContaining({ purpose: "limited-admission", challengeId: row.id, issuedAt: row.created_at.getTime() }),
     );
   });
-  it.each(["unregistered-client", "unenrolled", "no-policy", "ambiguous-email", "unapproved", "no-signing-key"])(
-    "denies %s before delivery",
+  it("uses the accepted immutable attempt marker to recover a lost verification response without repeating the code", async () => {
+    await issued();
+    const apply = api.setSession.getMockImplementation();
+    api.setSession.mockImplementationOnce(async (data: any) => {
+      await apply!(data);
+      throw new Error("lost verification result");
+    });
+    expect(await verifyWorkforceEmailOtp(verify())).toHaveProperty("redirect");
+    expect(api.setSession.mock.calls.filter(([data]: any) => data.checks?.otpEmail)).toHaveLength(1);
+  });
+  it.each(["wrong-request", "stale-factor", "missing-factor", "late-logout", "attempt-exhausted"])(
+    "denies %s before callback admission",
     async (kind) => {
-      if (kind === "unregistered-client")
-        vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "commercial-client" } } as any);
-      if (kind === "unenrolled") vi.mocked(listAuthenticationMethodTypes).mockResolvedValue({ authMethodTypes: [] } as any);
-      if (kind === "no-policy") vi.mocked(getLoginSettings).mockResolvedValue(undefined);
-      if (kind === "ambiguous-email") vi.mocked(listUsers).mockResolvedValue({ result: [user, user] } as any);
-      if (kind === "unapproved") vi.stubEnv("PAYPM_WORKFORCE_BOOTSTRAP_INVITED_USER_IDS", "99999");
-      if (kind === "no-signing-key") vi.stubEnv("PAYPM_WORKFORCE_FLOW_KEY_BASE64", "");
-      expect(await startWorkforceEmailOtp({ email: "staff@example.com", requestId: "oidc_request" })).toHaveProperty(
-        "error",
-      );
-      expect(createSessionAndUpdateCookie).not.toHaveBeenCalled();
+      await issued();
+      if (kind === "wrong-request") vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+      if (kind === "stale-factor" || kind === "missing-factor") {
+        const apply = api.setSession.getMockImplementation();
+        api.setSession.mockImplementation(async (data: any) => {
+          const r = await apply!(data);
+          if (data.checks?.otpEmail)
+            current.factors.otpEmail = kind === "stale-factor" ? { verifiedAt: ts(-600000) } : undefined;
+          return r;
+        });
+      }
+      if (kind === "late-logout") store.admission.mockResolvedValue(false);
+      if (kind === "attempt-exhausted")
+        store.attempt.mockRejectedValue(new WorkforceStoreError("workforce_attempts_exhausted"));
+      expect(await verifyWorkforceEmailOtp(verify())).toHaveProperty("error");
+      expect(completeFlowOrGetUrl).not.toHaveBeenCalled();
     },
   );
-  it("forwards exact code to the provider and admits only accepted fresh email evidence", async () => {
-    vi.mocked(readWorkforceState).mockResolvedValue({
-      purpose: "email-challenge",
-      sessionId: "provider-session",
-      userId: "12345",
-      clientId: "workforce-client",
-      requestId: "oidc_request",
-      issuedAt: Date.now() - 2000,
-      expiresAt: Date.now() + 298000,
-    });
-    vi.mocked(getSessionCookieById).mockResolvedValue({
-      id: "provider-session",
-      token: "provider-token",
-      requestId: "oidc_request",
-    } as any);
-    vi.mocked(getSession).mockResolvedValue({ session: session() } as any);
-    vi.mocked(getUserByID).mockResolvedValue({ user } as any);
-    const accepted = session();
-    accepted.factors.otpEmail = { verifiedAt: timestamp(0) };
-    vi.mocked(setSessionAndUpdateCookie).mockResolvedValue(accepted);
-    vi.mocked(completeFlowOrGetUrl).mockResolvedValue({ redirect: "https://app.example.com/callback" });
-    expect(
-      await verifyWorkforceEmailOtp({ sessionId: "provider-session", requestId: "oidc_request", code: "123456" }),
-    ).toHaveProperty("redirect");
-    expect(vi.mocked(setSessionAndUpdateCookie).mock.calls[0][0].checks?.otpEmail?.code).toBe("123456");
-    expect(writeWorkforceState).toHaveBeenCalledWith(expect.objectContaining({ purpose: "limited-admission" }));
-    accepted.factors.otpEmail.verifiedAt = timestamp(-600000);
-    expect(
-      await verifyWorkforceEmailOtp({ sessionId: "provider-session", requestId: "oidc_request", code: "123456" }),
-    ).toHaveProperty("error");
+  it("queues any unadmitted provider session created after logout for deletion", async () => {
+    store.session.mockRejectedValue(new WorkforceStoreError("challenge_not_active"));
+    expect(await startWorkforceEmailOtp(command())).toHaveProperty("error");
+    expect(store.orphanedSession).toHaveBeenCalledWith(row.id, current.id);
   });
-  it("denies a swapped request/session binding before provider verification", async () => {
-    vi.mocked(readWorkforceState).mockResolvedValue({
-      purpose: "email-challenge",
-      sessionId: "different-session",
-      userId: "12345",
-      clientId: "workforce-client",
-      requestId: "oidc_request",
-      issuedAt: Date.now() - 2000,
-      expiresAt: Date.now() + 298000,
-    });
+  it("resend rechecks enrolled OTP method before retiring the prior challenge", async () => {
+    await issued();
+    store.reserve.mockClear();
+    vi.mocked(listAuthenticationMethodTypes).mockResolvedValue({ authMethodTypes: [] } as any);
     expect(
-      await verifyWorkforceEmailOtp({ sessionId: "provider-session", requestId: "oidc_request", code: "123456" }),
+      await resendWorkforceEmailOtp({ sessionId: current.id, requestId: row.request_id, operationKey: randomUUID() }),
     ).toHaveProperty("error");
-    expect(setSessionAndUpdateCookie).not.toHaveBeenCalled();
+    expect(store.reserve).not.toHaveBeenCalled();
   });
 });

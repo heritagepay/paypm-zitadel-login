@@ -6,11 +6,14 @@ import { createHash } from "crypto";
 import { headers } from "next/headers";
 import { providerTimestampMs, sessionExpiresAt, sessionLifetime, verifiedFactor } from "../authentication-policy";
 import { getSessionCookieById } from "../cookies";
+import { isClassifiedError } from "../grpc/interceptors/error-classification";
 import { getServiceConfig } from "../service-url";
 import { deleteActionState, encryptActionState, getActionState, storeActionState } from "../workforce-action-state";
+import { workforceAssertionHash } from "../workforce-assertion";
 import { workforceIdentityRequest } from "../workforce-identity-client";
 import { workforceEligible, workforcePolicy } from "../workforce-policy";
 import { readWorkforceState } from "../workforce-state";
+import { workforceStore } from "../workforce-store";
 import { createSessionFromChecksAndChallenges, getSession, getUserByID, setSession } from "../zitadel";
 type JsonObject = NonNullable<NonNullable<Checks["webAuthN"]>["credentialAssertionData"]>;
 
@@ -54,11 +57,19 @@ function assertionValid(assertion: JsonObject, challenge: string) {
 async function baseContext() {
   const policy = workforcePolicy(),
     flow = await readWorkforceState();
-  if (!policy || !flow || flow.purpose !== "limited-admission" || !policy.clientIds.includes(flow.clientId))
+  if (
+    !policy ||
+    !flow?.challengeId ||
+    flow.purpose !== "limited-admission" ||
+    !policy.clientIds.includes(flow.clientId) ||
+    !(await workforceStore().admission(flow.sessionId, flow.userId, flow.clientId, flow.requestId))
+  )
     throw new Error("Admitted workforce session required");
   const cookie = await getSessionCookieById({ sessionId: flow.sessionId });
   if (!cookie || cookie.requestId !== flow.requestId) throw new Error("Admitted workforce session required");
   const { serviceConfig } = getServiceConfig(await headers());
+  if (new URL(serviceConfig.baseUrl).origin !== new URL(policy.issuer).origin)
+    throw new Error("Workforce provider unavailable");
   const { session } = await getSession({ serviceConfig, sessionId: cookie.id, sessionToken: cookie.token });
   if (
     !session ||
@@ -153,24 +164,41 @@ export async function completeWorkforceAction(command: { requestId: string; asse
     const { flow, serviceConfig } = await baseContext();
     if (state.baseSessionId !== flow.sessionId || state.userId !== flow.userId || state.clientId !== flow.clientId)
       return unavailable();
-    const accepted = await setSession({
-      serviceConfig,
-      sessionId: state.stepSessionId,
-      sessionToken: state.stepSessionToken,
-      challenges: undefined,
-      checks: create(ChecksSchema, { webAuthN: { credentialAssertionData: command.assertion } }),
-      lifetime: sessionLifetime({ seconds: BigInt(300), nanos: 0 } as Duration),
-    });
-    if (!accepted.sessionToken) return unavailable();
+    const store = workforceStore(),
+      assertionHash = workforceAssertionHash(command.assertion),
+      attempt = await store.passkeyAttempt(state.requestId, state.stepSessionId, assertionHash);
+    let token = "";
+    if (attempt.first) {
+      try {
+        const accepted = await setSession({
+          serviceConfig,
+          sessionId: state.stepSessionId,
+          sessionToken: state.stepSessionToken,
+          challenges: undefined,
+          checks: create(ChecksSchema, { webAuthN: { credentialAssertionData: command.assertion } }),
+          metadata: { ["paypm_workforce_passkey_request_" + state.requestId]: new TextEncoder().encode(assertionHash) },
+          lifetime: sessionLifetime({ seconds: BigInt(300), nanos: 0 } as Duration),
+        });
+        token = accepted.sessionToken;
+      } catch (error) {
+        if (isClassifiedError(error) && error.isUserError) {
+          await store.passkeyAttemptFailed(state.requestId);
+          return unavailable();
+        }
+      }
+    }
     const { session } = await getSession({
       serviceConfig,
       sessionId: state.stepSessionId,
-      sessionToken: accepted.sessionToken,
+      sessionToken: token,
     });
     const verified = providerTimestampMs(session?.factors?.webAuthN?.verifiedAt);
     if (
       !session ||
+      session.id !== state.stepSessionId ||
+      new TextDecoder().decode(session.metadata["paypm_workforce_passkey_request_" + state.requestId]) !== assertionHash ||
       session.factors?.user?.id !== state.userId ||
+      !verifiedFactor(session, session.factors.user.verifiedAt) ||
       session.factors.webAuthN?.userVerified !== true ||
       !verifiedFactor(session, session.factors.webAuthN.verifiedAt) ||
       verified === undefined ||
@@ -178,6 +206,8 @@ export async function completeWorkforceAction(command: { requestId: string; asse
       Date.now() - verified > 60000
     )
       return unavailable();
+    await store.passkeyAttemptVerified(state.requestId);
+    await baseContext();
     const result = await workforceIdentityRequest(
       `internal/v1/workforce-action-proofs/requests/${state.requestId}/complete`,
       { assertion: command.assertion },

@@ -25,6 +25,8 @@ import {
   removeSessionFromCookie,
 } from "../cookies";
 import { getServiceConfig } from "../service-url";
+import { workforcePolicy } from "../workforce-policy";
+import { workforceStore } from "../workforce-store";
 import { getPublicHost } from "./host";
 
 const logger = createLogger("session");
@@ -270,6 +272,10 @@ export async function clearSession(options: ClearSessionOptions) {
   if (!sessionCookie) {
     return;
   }
+
+  const workforce = workforcePolicy();
+  if (workforce?.emailOtpReady && new URL(serviceConfig.baseUrl).origin === new URL(workforce.issuer).origin)
+    await workforceStore().revoke(sessionCookie.id);
 
   const deleteResponse = await deleteSession({
     serviceConfig,

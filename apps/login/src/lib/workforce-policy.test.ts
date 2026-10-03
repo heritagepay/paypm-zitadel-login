@@ -3,6 +3,7 @@ import { UserState } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   identityWorkforceEligibility,
+  workforceClientMode,
   workforceEligible,
   workforcePolicy,
   workforceSelfRegistrationDenied,
@@ -30,6 +31,35 @@ afterEach(() => {
 });
 
 describe("workforce invitation authority", () => {
+  it("requires exact exhaustive current client policies and never treats an unknown native console as limited", () => {
+    vi.stubEnv("PAYPM_WORKFORCE_OIDC_CLIENT_IDS", "approved-client,privileged-console");
+    for (const rows of [
+      null,
+      [],
+      [{ clientId: "approved-client", mode: "limited" }],
+      [
+        { clientId: "approved-client", mode: "limited" },
+        { clientId: "approved-client", mode: "fresh_passkey" },
+      ],
+      [
+        { clientId: "approved-client", mode: "limited" },
+        { clientId: "privileged-console", mode: "unknown" },
+      ],
+    ]) {
+      vi.stubEnv("PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON", JSON.stringify(rows));
+      expect(workforceClientMode("approved-client")).toBeUndefined();
+    }
+    vi.stubEnv(
+      "PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON",
+      JSON.stringify([
+        { clientId: "approved-client", mode: "limited" },
+        { clientId: "privileged-console", mode: "fresh_passkey" },
+      ]),
+    );
+    expect(workforceClientMode("approved-client")).toBe("limited");
+    expect(workforceClientMode("privileged-console")).toBe("fresh_passkey");
+    expect(workforceClientMode("unregistered")).toBeUndefined();
+  });
   it("defaults OTP primary readiness off and denies unavailable Identity", async () => {
     expect(workforcePolicy()?.emailOtpReady).toBe(false);
     expect(await workforceEligible(user(), "approved-client", "login")).toBe(false);

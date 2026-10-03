@@ -362,12 +362,14 @@ export async function setSession({
   challenges,
   checks,
   lifetime,
+  metadata,
 }: WithServiceConfig<{
   sessionId: string;
   sessionToken: string;
   challenges: RequestChallenges | undefined;
   checks?: Checks;
   lifetime: Duration;
+  metadata?: Record<string, Uint8Array>;
 }>) {
   const sessionService: Client<typeof SessionService> = await createServiceForHost(SessionService, serviceConfig);
 
@@ -377,7 +379,7 @@ export async function setSession({
       sessionToken,
       challenges,
       checks: checks ? checks : {},
-      metadata: {},
+      metadata: metadata ?? {},
       lifetime,
     },
     {},
