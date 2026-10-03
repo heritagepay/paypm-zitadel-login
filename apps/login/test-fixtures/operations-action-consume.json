@@ -1,0 +1,55 @@
+{
+  "fixtureOnly": true,
+  "receipt": "paypm-ops1.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "request": {
+    "receipt": "paypm-ops1.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.merchant.settlement.review",
+      "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    }
+  },
+  "response": {
+    "proofId": "11111111-1111-4111-8111-111111111199",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.merchant.settlement.review",
+    "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "currency": "XOF"
+    },
+    "proofSessionId": "371947209876543210",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:01.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  }
+}

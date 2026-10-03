@@ -104,12 +104,12 @@ export class WorkforceProvider {
   async revoke(sessionId: string) {
     await this.api.deleteSession({ sessionId });
   }
-  async findActionIntent(operationKey: string, subject: string) {
+  async findActionIntent(operationKey: string, subject: string, metadataKey = "paypm_workforce_action_intent") {
     const result = await this.api.listSessions({
       query: { limit: 100, offset: BigInt(0), asc: false },
       queries: [{ query: { case: "userIdQuery", value: { id: subject } } }],
     });
-    const matches = result.sessions.filter((s) => text(s.metadata["paypm_workforce_action_intent"]) === operationKey);
+    const matches = result.sessions.filter((s) => text(s.metadata[metadataKey]) === operationKey);
     if (
       result.details?.totalResult === undefined ||
       Number(result.details.totalResult) > 100 ||

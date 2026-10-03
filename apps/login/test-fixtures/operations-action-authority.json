@@ -1,0 +1,74 @@
+{
+  "qualification": "synthetic-wire-only-no-live-admission-or-grant",
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.merchant.settlement.review",
+      "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    }
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.merchant.settlement.review",
+    "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "currency": "XOF"
+    }
+  },
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.merchant.settlement.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000",
+      "currency": "XOF"
+    },
+    "idempotencyKey": "00000008-0000-4000-8000-000000000000",
+    "input": {}
+  },
+  "canonicalUTF8": "{\"action\":\"operations.merchant.settlement.review\",\"appId\":\"paypm-operations\",\"contextId\":\"323456789012345678\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"idempotencyKey\":\"00000008-0000-4000-8000-000000000000\",\"input\":{},\"personId\":\"00000001-0000-4000-8000-000000000000\",\"target\":{\"currency\":\"XOF\",\"merchantBusinessId\":\"00000006-0000-4000-8000-000000000000\",\"organizationId\":\"00000007-0000-4000-8000-000000000000\"},\"version\":1}",
+  "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6",
+  "rawBody": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.merchant.settlement.review\",\"payloadHash\":\"55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"merchantBusinessId\":\"00000006-0000-4000-8000-000000000000\",\"organizationId\":\"00000007-0000-4000-8000-000000000000\"}}",
+  "method": "POST",
+  "path": "/api/v1/internal/operations/authority/actions/current",
+  "timestamp": "1791043200",
+  "nonce": "00000009-0000-4000-8000-000000000000",
+  "fixtureHmacSecret": "operations-owner-wire-fixture-only-not-a-live-key",
+  "signedUTF8": "1791043200.00000009-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.merchant.settlement.review\",\"payloadHash\":\"55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"merchantBusinessId\":\"00000006-0000-4000-8000-000000000000\",\"organizationId\":\"00000007-0000-4000-8000-000000000000\"}}",
+  "signatureHeader": "t=1791043200,n=00000009-0000-4000-8000-000000000000,v2=ac767b96becbc17a0f95b72430c9d0be8ec6c7411f7434d0803e33a2aa99d84d"
+}

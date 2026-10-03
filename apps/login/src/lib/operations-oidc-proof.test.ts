@@ -53,6 +53,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("signed pinned ZITADEL OIDC Session API provenance", () => {
+  it("accepts a refreshed signed pair only with original nonce/sid and the new access hash", async () => {
+    const refreshed = "synthetic-rotated-access",
+      originalSid = claims.sid,
+      originalAuthTime = claims.auth_time;
+    claims.at_hash = createHash("sha256").update(refreshed).digest().subarray(0, 16).toString("base64url");
+    introspection.jti = "v2_oidc-aggregate:new-access-id";
+    const result = await verifyOperationsOidcProof({ idToken: jwt(), accessToken: refreshed, nonce, clientId }, issuer);
+    expect(result.baseSessionId).toBe(originalSid);
+    expect(claims.auth_time).toBe(originalAuthTime);
+    expect(result.tokenId).toBe(introspection.jti);
+    expect(result.nonceHash).toBe(createHash("sha256").update(nonce).digest("hex"));
+    await expect(verifyOperationsOidcProof({ ...input(), accessToken }, issuer)).rejects.toThrow();
+  });
   it("derives base from the real signed ID sid and preserves a distinct token jti", async () => {
     const raw = input(),
       proof = await verifyOperationsOidcProof(raw, issuer);

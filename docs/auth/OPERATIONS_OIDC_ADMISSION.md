@@ -75,6 +75,22 @@ transport is the original access Bearer plus `X-PayPM-Workforce-Id-Token` and
 
 ## Required configuration and release gates
 
+### Server-side refresh
+
+The pinned [v2 refresh handler](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/api/oidc/token_refresh.go)
+retains `openid` scope and calls the same token response constructor. Its
+[session exchange](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/command/oidc_session.go)
+rotates access/refresh tokens while returning the original SessionID, Nonce and
+AuthTime. The new signed ID token therefore preserves the real `sid` and original
+authorization nonce and recomputes `at_hash` for the new access token. The BFF
+must serialize refresh rotation and replace the entire pair atomically only after
+current admission validation, while preserving its original nonce/Person/session
+and local logout epoch. Missing new ID/access proof or mismatch denies. The v1
+fallback supplies empty nonce/session values and cannot enter this contract.
+Refresh never extends Login's eight-hour absolute or 30-minute idle limit or
+provides action freshness. Provider client clock skew must be qualified so actual
+access `exp-iat` remains at most 300 seconds; zero skew is the intended setting.
+
 - `PAYPM_OPERATIONS_OIDC_CLIENT_POLICIES_JSON` is an exact nonempty array of
   `{clientId,appId,deploymentId,environment}` for registered workforce clients.
   Missing/duplicate/unclassified clients deny. Deployment preserves the current
