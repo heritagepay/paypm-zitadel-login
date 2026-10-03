@@ -6,15 +6,22 @@ import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_se
 import { headers } from "next/headers";
 import { providerTimestampMs, sessionExpiresAt } from "../authentication-policy";
 import { completeFlowOrGetUrl } from "../client";
-import { addSessionToCookie, getSessionCookieById } from "../cookies";
+import { addSessionToCookie, getSessionCookieById, removeSessionFromCookie } from "../cookies";
 import { isClassifiedError } from "../grpc/interceptors/error-classification";
 import { getServiceConfig } from "../service-url";
 import { workforceClientMode, workforceEligible, workforcePolicy } from "../workforce-policy";
 import { workforceProvider, type WorkforceProvider } from "../workforce-provider";
 import { flushWorkforceRevocations } from "../workforce-revocations";
-import { encodeWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
+import { deleteWorkforceState, encodeWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
 import { workforceStore, WorkforceStoreError, type WorkforceChallenge, type WorkforceStore } from "../workforce-store";
-import { getAuthRequest, getLoginSettings, getUserByID, listAuthenticationMethodTypes, listUsers } from "../zitadel";
+import {
+  getAuthRequest,
+  getLoginSettings,
+  getSession,
+  getUserByID,
+  listAuthenticationMethodTypes,
+  listUsers,
+} from "../zitadel";
 
 const unavailable = () => ({ error: "Workforce authentication unavailable" });
 const operation = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -148,17 +155,33 @@ export async function resendWorkforceEmailOtp(command: { sessionId: string; requ
   if (!policy?.emailOtpReady || !operation(command.operationKey)) return unavailable();
   try {
     const flow = await readWorkforceState();
-    if (
-      !flow?.challengeId ||
-      flow.purpose !== "email-challenge" ||
-      flow.sessionId !== command.sessionId ||
-      flow.requestId !== command.requestId
-    )
+    if (!flow?.challengeId || flow.purpose !== "email-challenge" || flow.requestId !== command.requestId)
       return unavailable();
     const store = workforceStore(),
-      row = await store.challenge(flow.challengeId),
+      current = await store.challenge(flow.challengeId),
       { serviceConfig } = getServiceConfig(await headers());
     if (new URL(serviceConfig.baseUrl).origin !== new URL(policy.issuer).origin) return unavailable();
+    if (
+      current.issuer !== policy.issuer ||
+      current.provider_subject !== flow.userId ||
+      current.client_id !== flow.clientId ||
+      current.request_id !== flow.requestId ||
+      current.provider_session_id !== flow.sessionId
+    )
+      return unavailable();
+    // A resend response can update the HttpOnly flow cookie before the caller sees
+    // its body. Resolve the exact original session, then let durable operation
+    // readback distinguish an identical retry from a new send on a retired flow.
+    const row =
+      command.sessionId === flow.sessionId
+        ? current
+        : await store.challengeBySession({
+            issuer: policy.issuer,
+            userId: flow.userId,
+            clientId: flow.clientId,
+            requestId: flow.requestId,
+            sessionId: command.sessionId,
+          });
     const { authRequest } = await getAuthRequest({ serviceConfig, authRequestId: flow.requestId.slice(5) }),
       { user } = await getUserByID({ serviceConfig, userId: flow.userId });
     if (
@@ -277,10 +300,80 @@ export async function verifyWorkforceEmailOtp(command: {
       issuedAt: row.created_at.getTime(),
       expiresAt: Math.min(expiresAt, row.created_at.getTime() + 8 * 3600000),
     });
+    const mode = workforceClientMode(row.client_id);
+    if (!mode) return unavailable();
+    if (mode === "fresh_passkey")
+      return {
+        redirect: `/passkey?${new URLSearchParams({ sessionId: result.session.id, requestId: row.request_id, organization: policy.organizationId })}`,
+      };
     return completeFlowOrGetUrl(
       { sessionId: result.session.id, requestId: row.request_id, organization: policy.organizationId },
       settings.defaultRedirectUri,
     );
+  } catch {
+    return unavailable();
+  }
+}
+
+/** Cancellation retires durable admission before best-effort provider deletion. */
+export async function cancelWorkforceEmailOtp(command: { requestId: string; sessionId: string }) {
+  const policy = workforcePolicy();
+  if (!policy?.emailOtpReady) return unavailable();
+  try {
+    const flow = await readWorkforceState(),
+      store = workforceStore(),
+      { serviceConfig } = getServiceConfig(await headers());
+    if (new URL(serviceConfig.baseUrl).origin !== new URL(policy.issuer).origin || !command.requestId?.startsWith("oidc_"))
+      return unavailable();
+    let row: WorkforceChallenge;
+    if (flow) {
+      if (
+        !flow.challengeId ||
+        !["email-challenge", "limited-admission"].includes(flow.purpose) ||
+        flow.requestId !== command.requestId
+      )
+        return unavailable();
+      row = await store.challenge(flow.challengeId);
+      if (
+        row.issuer !== policy.issuer ||
+        row.provider_session_id !== flow.sessionId ||
+        row.provider_subject !== flow.userId ||
+        row.client_id !== flow.clientId ||
+        row.request_id !== flow.requestId
+      )
+        return unavailable();
+    } else {
+      // An expired challenge cookie cannot verify a code. Its still-protected
+      // provider session cookie may only authorize retirement after real token
+      // validation and exact request/subject matching, never new admission.
+      const recent = await getSessionCookieById({ sessionId: command.sessionId });
+      if (!recent || recent.requestId !== command.requestId) return unavailable();
+      const { authRequest } = await getAuthRequest({ serviceConfig, authRequestId: command.requestId.slice(5) });
+      if (!authRequest || !workforceClientMode(authRequest.clientId)) return unavailable();
+      const { session } = await getSession({ serviceConfig, sessionId: recent.id, sessionToken: recent.token });
+      row = await store.challengeForRequest({
+        issuer: policy.issuer,
+        clientId: authRequest.clientId,
+        requestId: command.requestId,
+        sessionId: recent.id,
+      });
+      if (
+        !session ||
+        session.id !== row.provider_session_id ||
+        session.factors?.user?.id !== row.provider_subject ||
+        session.factors?.user?.organizationId !== policy.organizationId
+      )
+        return unavailable();
+    }
+    await store.cancelChallenge(row.id);
+    const recent = await getSessionCookieById({ sessionId: row.provider_session_id! });
+    if (recent) await removeSessionFromCookie({ session: recent });
+    await deleteWorkforceState();
+    // Queue is durable; provider outage cannot restore the cancelled admission.
+    await flushWorkforceRevocations(store, await workforceProvider(serviceConfig, policy.organizationId)).catch(
+      () => undefined,
+    );
+    return { cancelled: true as const };
   } catch {
     return unavailable();
   }

@@ -3,12 +3,24 @@ import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_se
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { completeFlowOrGetUrl } from "../client";
-import { addSessionToCookie, getSessionCookieById } from "../cookies";
+import { addSessionToCookie, getSessionCookieById, removeSessionFromCookie } from "../cookies";
 import { WorkforceProvider, workforceProvider } from "../workforce-provider";
-import { readWorkforceState, writeWorkforceState } from "../workforce-state";
+import { deleteWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
 import { workforceStore, WorkforceStoreError, type WorkforceAttempt, type WorkforceChallenge } from "../workforce-store";
-import { getAuthRequest, getLoginSettings, getUserByID, listAuthenticationMethodTypes, listUsers } from "../zitadel";
-import { resendWorkforceEmailOtp, startWorkforceEmailOtp, verifyWorkforceEmailOtp } from "./workforce-email";
+import {
+  getAuthRequest,
+  getLoginSettings,
+  getSession,
+  getUserByID,
+  listAuthenticationMethodTypes,
+  listUsers,
+} from "../zitadel";
+import {
+  cancelWorkforceEmailOtp,
+  resendWorkforceEmailOtp,
+  startWorkforceEmailOtp,
+  verifyWorkforceEmailOtp,
+} from "./workforce-email";
 vi.mock("next/headers", () => ({ headers: vi.fn(() => new Headers()) }));
 vi.mock("../service-url", () => ({ getServiceConfig: () => ({ serviceConfig: { baseUrl: "https://auth.example.com" } }) }));
 vi.mock("../zitadel", () => ({
@@ -17,12 +29,18 @@ vi.mock("../zitadel", () => ({
   getUserByID: vi.fn(),
   listAuthenticationMethodTypes: vi.fn(),
   listUsers: vi.fn(),
+  getSession: vi.fn(),
 }));
-vi.mock("../cookies", () => ({ getSessionCookieById: vi.fn(), addSessionToCookie: vi.fn() }));
+vi.mock("../cookies", () => ({
+  getSessionCookieById: vi.fn(),
+  addSessionToCookie: vi.fn(),
+  removeSessionFromCookie: vi.fn(),
+}));
 vi.mock("../workforce-state", async (original) => ({
   ...(await original<typeof import("../workforce-state")>()),
   readWorkforceState: vi.fn(),
   writeWorkforceState: vi.fn(),
+  deleteWorkforceState: vi.fn(),
 }));
 vi.mock("../workforce-store", async (original) => ({
   ...(await original<typeof import("../workforce-store")>()),
@@ -129,6 +147,9 @@ beforeEach(() => {
     }),
     token: vi.fn(() => "must-not-return"),
     challenge: vi.fn(async () => row),
+    challengeBySession: vi.fn(),
+    cancelChallenge: vi.fn(),
+    challengeForRequest: vi.fn(async () => row),
     attempt: vi.fn(async () => ({ ...attempt, first: true })),
     failed: vi.fn(),
     verified: vi.fn(async () => {
@@ -140,6 +161,7 @@ beforeEach(() => {
   vi.mocked(workforceStore).mockReturnValue(store);
   vi.mocked(workforceProvider).mockResolvedValue(new WorkforceProvider(api, "54321"));
   vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "workforce-client" } } as any);
+  vi.mocked(getSession).mockResolvedValue({ session: current } as any);
   vi.mocked(listUsers).mockResolvedValue({ result: [user] } as any);
   vi.mocked(getUserByID).mockResolvedValue({ user } as any);
   vi.mocked(getLoginSettings).mockResolvedValue({ allowLocalAuthentication: true } as any);
@@ -276,5 +298,67 @@ describe("provider-owned workforce email OTP with durable orchestration", () => 
       await resendWorkforceEmailOtp({ sessionId: current.id, requestId: row.request_id, operationKey: randomUUID() }),
     ).toHaveProperty("error");
     expect(store.reserve).not.toHaveBeenCalled();
+  });
+  it("recovers a resend response lost after the signed cookie changed without changing the original operation", async () => {
+    await issued();
+    const previous = { ...row, id: randomUUID(), provider_session_id: "previous-provider", state: "retired" };
+    store.challengeBySession.mockResolvedValue(previous);
+    const op = randomUUID();
+    expect(
+      await resendWorkforceEmailOtp({ sessionId: "previous-provider", requestId: row.request_id, operationKey: op }),
+    ).toHaveProperty("sessionId", current.id);
+    expect(store.challengeBySession).toHaveBeenCalledWith({
+      issuer: row.issuer,
+      userId: row.provider_subject,
+      clientId: row.client_id,
+      requestId: row.request_id,
+      sessionId: "previous-provider",
+    });
+    expect(store.reserve).toHaveBeenLastCalledWith(expect.objectContaining({ operationKey: op }), previous.id);
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+  });
+  it("hands a privileged client to an actual fresh passkey ceremony without completing its OTP callback", async () => {
+    await issued();
+    vi.stubEnv(
+      "PAYPM_WORKFORCE_OIDC_ADMISSION_POLICIES_JSON",
+      JSON.stringify([{ clientId: row.client_id, mode: "fresh_passkey" }]),
+    );
+    const result = await verifyWorkforceEmailOtp(verify());
+    expect(result).toMatchObject({ redirect: expect.stringContaining("/passkey?") });
+    expect(completeFlowOrGetUrl).not.toHaveBeenCalled();
+    expect(store.verified).toHaveBeenCalled();
+  });
+  it("retires the exact signed challenge before cookie cleanup and tolerates a provider revocation outage", async () => {
+    await issued();
+    store.pendingRevocations.mockResolvedValue([{ provider_session_id: current.id }]);
+    api.deleteSession.mockRejectedValue(new Error("provider unavailable"));
+    expect(await cancelWorkforceEmailOtp({ requestId: row.request_id, sessionId: current.id })).toEqual({ cancelled: true });
+    expect(store.cancelChallenge).toHaveBeenCalledWith(row.id);
+    expect(store.cancelChallenge.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(removeSessionFromCookie).mock.invocationCallOrder[0],
+    );
+    expect(deleteWorkforceState).toHaveBeenCalled();
+    expect(store.revocationCompleted).not.toHaveBeenCalled();
+  });
+  it("cannot cancel a challenge from another request or subject", async () => {
+    await issued();
+    expect(await cancelWorkforceEmailOtp({ requestId: "oidc_other", sessionId: current.id })).toHaveProperty("error");
+    row.provider_subject = "different";
+    expect(await cancelWorkforceEmailOtp({ requestId: row.request_id, sessionId: current.id })).toHaveProperty("error");
+    expect(store.cancelChallenge).not.toHaveBeenCalled();
+  });
+  it("can retire an expired signed challenge only through a current exact provider session cookie", async () => {
+    await issued();
+    vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+    expect(await cancelWorkforceEmailOtp({ requestId: row.request_id, sessionId: current.id })).toEqual({ cancelled: true });
+    expect(getSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: current.id, sessionToken: "must-not-return" }),
+    );
+    store.cancelChallenge.mockClear();
+    vi.mocked(getSession).mockResolvedValue({
+      session: { ...current, factors: { user: { id: "other", organizationId: "54321" } } },
+    } as any);
+    expect(await cancelWorkforceEmailOtp({ requestId: row.request_id, sessionId: current.id })).toHaveProperty("error");
+    expect(store.cancelChallenge).not.toHaveBeenCalled();
   });
 });

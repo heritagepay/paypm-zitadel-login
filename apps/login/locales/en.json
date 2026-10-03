@@ -457,5 +457,24 @@
     "failedLoading": "Failed to load data. Please try again.",
     "tryagain": "Try Again",
     "couldNotContinueSession": "Could not continue with session - missing user information"
+  },
+  "workforceEmail": {
+    "title": "Sign in to your staff account",
+    "description": "Use your invited work email. We will send you a six-digit sign-in code.",
+    "emailLabel": "Work email",
+    "send": "Send code",
+    "codeTitle": "Check your email",
+    "codeDescription": "Enter the six-digit code sent to your work email.",
+    "codeLabel": "Sign-in code",
+    "verify": "Verify and continue",
+    "expires": "Code expires in {minutes} min.",
+    "expired": "This code has expired. Change email to start again.",
+    "resendAfter": "Resend in {seconds}s",
+    "resend": "Send a new code",
+    "changeEmail": "Change email or cancel",
+    "lostAccess": "No longer have access to this email?",
+    "recovery": "Contact your authorized staff administrator for reviewed recovery. Email changes do not grant additional access.",
+    "invitedOnly": "Staff access requires an approved invitation. Some applications also ask for your passkey.",
+    "unavailable": "We could not complete this step. Check your details or retry. If you still need help, contact your staff administrator."
   }
 }

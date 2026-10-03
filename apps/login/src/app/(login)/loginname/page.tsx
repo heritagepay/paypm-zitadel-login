@@ -1,8 +1,11 @@
+import { Alert } from "@/components/alert";
 import { DynamicTheme } from "@/components/dynamic-theme";
 import { SignInWithIdp } from "@/components/sign-in-with-idp";
 import { Translated } from "@/components/translated";
 import { UsernameForm } from "@/components/username-form";
+import { WorkforceEmailForm } from "@/components/workforce-email-form";
 import { getServiceConfig } from "@/lib/service-url";
+import { workforceClientMode, workforcePolicy, workforceRequestClient } from "@/lib/workforce-policy";
 import { getActiveIdentityProviders, getBrandingSettings, getDefaultOrg, getLoginSettings } from "@/lib/zitadel";
 import { Organization } from "@zitadel/proto/zitadel/org/v2/org_pb";
 import { Metadata } from "next";
@@ -44,6 +47,26 @@ export default async function Page(props: { searchParams: Promise<Record<string 
   });
 
   const branding = await getBrandingSettings({ serviceConfig, organization: organization ?? defaultOrganization });
+
+  if (process.env.PAYPM_WORKFORCE_EMAIL_OTP_READY === "true" && !workforcePolicy()) {
+    const t = await getTranslations("workforceEmail");
+    return (
+      <DynamicTheme branding={branding}>
+        <Alert>{t("unavailable")}</Alert>
+      </DynamicTheme>
+    );
+  }
+  const workforceClient = await workforceRequestClient(serviceConfig, requestId);
+  if (workforcePolicy()?.emailOtpReady && workforceClient && requestId) {
+    const t = await getTranslations("workforceEmail");
+    return workforceClientMode(workforceClient) ? (
+      <WorkforceEmailForm requestId={requestId} branding={branding} />
+    ) : (
+      <DynamicTheme branding={branding}>
+        <Alert>{t("unavailable")}</Alert>
+      </DynamicTheme>
+    );
+  }
 
   return (
     <DynamicTheme branding={branding}>

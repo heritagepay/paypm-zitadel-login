@@ -421,5 +421,24 @@
     "sessionExpired": "Votre session actuelle a expiré. Veuillez vous reconnecter.",
     "failedLoading": "Échec du chargement des données. Veuillez réessayer.",
     "tryagain": "Réessayer"
+  },
+  "workforceEmail": {
+    "title": "Connectez-vous à votre compte professionnel",
+    "description": "Utilisez votre adresse professionnelle invitée. Nous vous enverrons un code de connexion à six chiffres.",
+    "emailLabel": "Adresse e-mail professionnelle",
+    "send": "Envoyer le code",
+    "codeTitle": "Consultez votre messagerie",
+    "codeDescription": "Saisissez le code à six chiffres envoyé à votre adresse professionnelle.",
+    "codeLabel": "Code de connexion",
+    "verify": "Vérifier et continuer",
+    "expires": "Le code expire dans {minutes} min.",
+    "expired": "Ce code a expiré. Changez d’adresse e-mail pour recommencer.",
+    "resendAfter": "Renvoyer dans {seconds} s",
+    "resend": "Envoyer un nouveau code",
+    "changeEmail": "Changer d’adresse e-mail ou annuler",
+    "lostAccess": "Vous n’avez plus accès à cette adresse ?",
+    "recovery": "Contactez votre administrateur habilité pour une récupération examinée. Un changement d’adresse ne donne aucun accès supplémentaire.",
+    "invitedOnly": "L’accès professionnel nécessite une invitation approuvée. Certaines applications demandent aussi votre clé d’accès.",
+    "unavailable": "Cette étape n’a pas abouti. Vérifiez vos informations ou réessayez. Si vous avez besoin d’aide, contactez votre administrateur."
   }
 }

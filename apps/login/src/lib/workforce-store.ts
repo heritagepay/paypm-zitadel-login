@@ -166,6 +166,37 @@ export class WorkforceStore {
     if (!rows[0]) throw new WorkforceStoreError("challenge_not_found");
     return rows[0];
   }
+  async challengeBySession(input: {
+    issuer: string;
+    userId: string;
+    clientId: string;
+    requestId: string;
+    sessionId: string;
+  }) {
+    const [row] = await this.sql<
+      WorkforceChallenge[]
+    >`SELECT * FROM login_workforce_challenges WHERE issuer=${input.issuer} AND provider_subject=${input.userId} AND client_id=${input.clientId} AND request_id=${input.requestId} AND provider_session_id=${input.sessionId}`;
+    if (!row) throw new WorkforceStoreError("challenge_not_found");
+    return row;
+  }
+  async challengeForRequest(input: { issuer: string; clientId: string; requestId: string; sessionId: string }) {
+    const [row] = await this.sql<
+      WorkforceChallenge[]
+    >`SELECT * FROM login_workforce_challenges WHERE issuer=${input.issuer} AND client_id=${input.clientId} AND request_id=${input.requestId} AND provider_session_id=${input.sessionId}`;
+    if (!row) throw new WorkforceStoreError("challenge_not_found");
+    return row;
+  }
+  async cancelChallenge(id: string) {
+    await this.sql.begin(async (tx) => {
+      const row = await this.challenge(id, tx, true);
+      await this.retire(tx, row);
+      if (row.provider_session_id) {
+        await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE provider_session_id=${row.provider_session_id} AND revoked_at IS NULL`;
+        await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE base_session_id=${row.provider_session_id} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+        await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE base_session_id=${row.provider_session_id} AND state<>'retired'`;
+      }
+    });
+  }
   private async current(sql: Connection, row: WorkforceChallenge, requireIssued = true) {
     const [epoch] = await sql<
       { epoch: string }[]

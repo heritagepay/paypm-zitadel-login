@@ -44,7 +44,7 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
   async function ageFixture(row: WorkforceChallenge, seconds: number) {
     await sql.begin(async (tx) => {
       await tx.unsafe("ALTER TABLE login_workforce_challenges DISABLE TRIGGER protected_workforce_challenge");
-      await tx`UPDATE login_workforce_challenges SET created_at=clock_timestamp()-${seconds}*interval '1 second',expires_at=clock_timestamp()+(300-${seconds})*interval '1 second' WHERE id=${row.id}`;
+      await tx`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS value) UPDATE login_workforce_challenges SET created_at=stamp.value-${seconds}*interval '1 second',expires_at=stamp.value+(300-${seconds})*interval '1 second' FROM stamp WHERE id=${row.id}`;
       await tx.unsafe("ALTER TABLE login_workforce_challenges ENABLE TRIGGER protected_workforce_challenge");
     });
     return store.challenge(row.id);
@@ -103,6 +103,52 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await expect(store.verified(a.id, new Date(), new Date(Date.now() + 100000))).rejects.toMatchObject({
       code: "provider_verification_mismatch",
     });
+  });
+  it("reads the exact old session for an identical resend retry and denies a new send on a retired challenge", async () => {
+    const previous = await ready();
+    await ageFixture(previous, 61);
+    const command = input();
+    const next = await store.reserve(command, previous.id);
+    await store.session(next.id, "resend-session", "token");
+    await store.issued(next.id);
+    const found = await store.challengeBySession({
+      issuer: previous.issuer,
+      userId: previous.provider_subject,
+      clientId: previous.client_id,
+      requestId: previous.request_id,
+      sessionId: previous.provider_session_id!,
+    });
+    expect(found.id).toBe(previous.id);
+    expect((await store.reserve(command, found.id)).id).toBe(next.id);
+    await ageFixture(await store.challenge(next.id), 61);
+    await expect(store.reserve(input(), found.id)).rejects.toMatchObject({ code: "challenge_not_active" });
+    await expect(
+      store.challengeBySession({
+        issuer: previous.issuer,
+        userId: "other",
+        clientId: previous.client_id,
+        requestId: previous.request_id,
+        sessionId: previous.provider_session_id!,
+      }),
+    ).rejects.toMatchObject({ code: "challenge_not_found" });
+  });
+  it("cancellation denies late verification and queues a provider session created after cancellation", async () => {
+    const row = await ready(),
+      attempt = await store.attempt(row.id, randomUUID(), "123456");
+    await store.cancelChallenge(row.id);
+    await expect(store.verified(attempt.id, new Date(), new Date(Date.now() + 100000))).rejects.toMatchObject({
+      code: "challenge_not_active",
+    });
+    expect(await store.admission(row.provider_session_id!, row.provider_subject, row.client_id, row.request_id)).toBe(false);
+    const pending = await store.reserve(input("other@example.test"));
+    await store.cancelChallenge(pending.id);
+    await expect(store.session(pending.id, "late-provider", "token")).rejects.toMatchObject({
+      code: "challenge_not_active",
+    });
+    await store.orphanedSession(pending.id, "late-provider");
+    expect(await store.pendingRevocations()).toEqual(
+      expect.arrayContaining([{ provider_session_id: row.provider_session_id }, { provider_session_id: "late-provider" }]),
+    );
   });
   it("creates only exact limited admission with accepted fresh factor and enforces session binding", async () => {
     const row = await ready(),

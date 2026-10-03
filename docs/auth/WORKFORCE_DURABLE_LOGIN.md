@@ -129,4 +129,29 @@ from provider mock tests. Release still requires shared durable DB/backup restor
 private reader credential rotation, current Session API machine grants, SMTP,
 client/role policies, browser/BFF integration, fresh passkey behavior and real
 independent authorized staff/recovery actors. Existing presentation changes are
-preserved; this slice introduces no visible UI.
+preserved.
+
+## Registered workforce entry experience
+
+When readiness is enabled, the server resolves the actual OIDC request client and
+uses the email-code form only for the registered workforce category. An invalid
+registry or missing client admission mode denies entry. Readiness remains off by
+default. The form inherits the current light C3 frame, controls and French/English
+copy, with email and one-time-code autofill, explicit verification, server-derived
+expiry/resend times, cancellation and reviewed staff recovery guidance. It sends
+no code in a URL, storage or analytics.
+
+The browser retains the same operation key for uncertain send, resend and
+verification retries. A resend whose cookie was already updated reads the exact
+original challenge and durable operation; a new send on a retired challenge is
+denied. Cancellation retires the durable challenge/admission before cookie cleanup
+and queued provider deletion. A late verification cannot restore the cancelled
+client flow or current admission. An expired flow can only be retired through the
+exact still-protected provider session cookie after actual provider token validation.
+It cannot grant admission. Expired codes restart through email entry.
+
+A `fresh_passkey` client goes from accepted OTP to the existing required-UV native
+provider ceremony; OTP does not finalize its privileged callback. A limited client
+uses the protected callback path. App/native resource permissions remain with their
+owners. Source component/route, factor tests and actual SQL proofs are distinct from
+browser experience fixtures, actual SMTP, native passkey and authorized actor proof.
