@@ -52,3 +52,33 @@ describe("uncertain workforce action creation readback", () => {
     });
   });
 });
+
+describe("exact owned provider retirement readback", () => {
+  it("verifies actual subject/organization before deletion and rereads classified not-found", async () => {
+    const { ClassifiedConnectError } = await import("./grpc/interceptors/error-classification");
+    const { ConnectError, Code } = await import("@connectrpc/connect");
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({ session: session() })
+      .mockRejectedValueOnce(new ClassifiedConnectError(new ConnectError("not found", Code.NotFound)));
+    const deleteSession = vi.fn();
+    expect(
+      await new WorkforceProvider({ getSession, deleteSession } as any, "300").retireOwnedSession(
+        "real-provider-session",
+        "700",
+      ),
+    ).toBe(true);
+    expect(deleteSession).toHaveBeenCalledWith({ sessionId: "real-provider-session" });
+    expect(getSession).toHaveBeenCalledTimes(2);
+  });
+  it("does not treat empty/mismatched/failed readback as confirmed or mutate another subject", async () => {
+    const deleteSession = vi.fn(),
+      getSession = vi.fn().mockResolvedValue({});
+    const p = new WorkforceProvider({ getSession, deleteSession } as any, "300");
+    await expect(p.retireOwnedSession("real-provider-session", "700")).rejects.toThrow();
+    expect(deleteSession).not.toHaveBeenCalled();
+    getSession.mockResolvedValue({ session: session() });
+    await expect(p.retireOwnedSession("real-provider-session", "701")).rejects.toThrow();
+    expect(deleteSession).not.toHaveBeenCalled();
+  });
+});

@@ -1,10 +1,11 @@
-import { create, type Client } from "@zitadel/client";
+import { Code, create, type Client } from "@zitadel/client";
 import { RequestChallengesSchema } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
 import type { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { ChecksSchema, SessionService } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import "server-only";
 import { providerTimestampMs, sessionLifetime, verifiedFactor } from "./authentication-policy";
 import { getUserAgent } from "./fingerprint";
+import { isClassifiedError } from "./grpc/interceptors/error-classification";
 import { createServiceForHost } from "./service";
 import { WorkforceStoreError, type WorkforceAttempt, type WorkforceChallenge } from "./workforce-store";
 import type { ServiceConfig } from "./zitadel";
@@ -103,6 +104,33 @@ export class WorkforceProvider {
   }
   async revoke(sessionId: string) {
     await this.api.deleteSession({ sessionId });
+  }
+  /** Purpose-bound logout rereads uncertain deletion; never retires a caller-selected subject. */
+  async retireOwnedSession(sessionId: string, subject: string) {
+    const read = async () => {
+      try {
+        const session = (await this.api.getSession({ sessionId })).session;
+        if (!session) throw new WorkforceStoreError("provider_retirement_unconfirmed");
+        return session;
+      } catch (error) {
+        if (isClassifiedError(error) && error.code === Code.NotFound) return undefined;
+        throw error;
+      }
+    };
+    const current = await read();
+    if (!current) return true;
+    if (
+      current.id !== sessionId ||
+      current.factors?.user?.id !== subject ||
+      current.factors.user.organizationId !== this.organizationId
+    )
+      throw new WorkforceStoreError("retirement_provider_binding_changed");
+    try {
+      await this.api.deleteSession({ sessionId });
+    } catch (error) {
+      if (!isClassifiedError(error) || error.code !== Code.NotFound) throw error;
+    }
+    return (await read()) === undefined;
   }
   async findActionIntent(operationKey: string, subject: string, metadataKey = "paypm_workforce_action_intent") {
     const result = await this.api.listSessions({

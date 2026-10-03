@@ -56,6 +56,7 @@ beforeEach(() => {
   );
   vi.stubEnv("PAYPM_OPERATIONS_OIDC_CLIENT_POLICIES_JSON", JSON.stringify([policy]));
   vi.stubEnv("PAYPM_OPERATIONS_ADMISSION_READER_TOKEN", secret);
+  vi.stubEnv("PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64", Buffer.alloc(32, 29).toString("base64"));
   vi.stubEnv("PAYPM_WORKFORCE_ADMISSION_READER_TOKEN", Buffer.alloc(32, 15).toString("base64url"));
   vi.mocked(verifyOperationsOidcProof).mockResolvedValue(proof);
   const n = Date.now() - 1000,

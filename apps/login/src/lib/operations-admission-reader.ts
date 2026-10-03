@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import "server-only";
 import { providerTimestampMs, verifiedFactor } from "./authentication-policy";
 import { verifyOperationsOidcProof } from "./operations-oidc-proof";
+import { mintOperationsRetirementProof, type OperationsRetirementAdmission } from "./operations-retirement-proof";
 import { getServiceConfig } from "./service-url";
 import { identityWorkforceEligibility, workforceClientMode, workforcePolicy } from "./workforce-policy";
 import { workforceProvider } from "./workforce-provider";
@@ -130,24 +131,27 @@ export async function readOperationsAdmission(request: Request): Promise<Respons
       return deny();
     const current = await store.currentAdmission(tuple);
     if (!current || String(current.epoch) !== String(admission.epoch)) return deny();
-    return Response.json(
-      {
-        active: true,
-        ...proof,
-        personId: eligibility.personId,
-        plane: "workforce",
-        ...client,
-        contextId: policy.organizationId,
-        requestId: current.request_id,
-        challengeId: current.challenge_id,
-        authenticationClass: "workforce_limited",
-        verifiedAt: current.verified_at.toISOString(),
-        absoluteExpiresAt: current.absolute_expires_at.toISOString(),
-        checkedAt: new Date().toISOString(),
-        revocationVersion: String(current.epoch),
+    const evidence: OperationsRetirementAdmission = {
+      active: true,
+      ...proof,
+      personId: eligibility.personId,
+      plane: "workforce",
+      ...client,
+      contextId: policy.organizationId,
+      requestId: current.request_id,
+      challengeId: current.challenge_id,
+      authenticationClass: "workforce_limited",
+      verifiedAt: current.verified_at.toISOString(),
+      absoluteExpiresAt: current.absolute_expires_at.toISOString(),
+      checkedAt: new Date().toISOString(),
+      revocationVersion: String(current.epoch),
+    };
+    return Response.json(evidence, {
+      headers: {
+        "cache-control": "no-store",
+        "X-PayPM-Operations-Retirement-Proof": mintOperationsRetirementProof(evidence),
       },
-      { headers: { "cache-control": "no-store" } },
-    );
+    });
   } catch {
     return deny();
   }
