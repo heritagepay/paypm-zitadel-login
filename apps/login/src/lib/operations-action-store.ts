@@ -49,7 +49,11 @@ export type OperationsDeploymentGrantCommand = {
   policyId: string;
   targetPersonId: string;
   targetAuthentication: { issuer: string; subject: string };
-  capability: "operations.transactions.read" | "operations.kyc.read" | "operations.audit.read";
+  capability:
+    | "operations.transactions.read"
+    | "operations.kyc.read"
+    | "operations.audit.read"
+    | "operations.contract-vault.read";
   expiresAt: string;
   reason: string;
 };

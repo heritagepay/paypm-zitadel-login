@@ -19,7 +19,7 @@ The registered actions are `operations.access.deployment-grant.review`,
   policyId: string;
   targetPersonId: string;
   targetAuthentication: { issuer: string; subject: string };
-  capability: 'operations.transactions.read' | 'operations.kyc.read' | 'operations.audit.read';
+  capability: 'operations.transactions.read' | 'operations.kyc.read' | 'operations.audit.read' | 'operations.contract-vault.read';
   expiresAt: string;
   reason: string;
 }
@@ -76,3 +76,18 @@ All fixtures are synthetic; no policy, actor grant, provider credential or
 deployment was configured. Exact RP/provider/browser/actor, current independent
 reviewers/target invitation, secret custody and final owning grant effects
 remain rollout gates. Homelab worker taints require the authorized local checks.
+
+The catalogue also admits the exact `operations.contract-vault.read` capability.
+An existing policy receives no automatic addition: current Operations owner
+policy must explicitly list it, with the same deployment/environment and
+independent review. The owning Contract Vault still enforces its registered
+object/dataset admission. This grant supplies read permission only.
+The backend `612a320` fixture is copied verbatim to
+`apps/login/test-fixtures/operations-contract-vault-grant.json`; policy hash
+`4661bea4fc303dfa6bdc223ce02b922f388a6007c17046bbf879b1841bfde5e8` and action hash
+`c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398` are independently
+recomputed, including exact raw HMAC and strict twenty-field proof. The same
+strict7/resource5 family, original-operation status and separate existing
+credentials apply. 129 focused, 20 actual PostgreSQL and 1,329 full Login checks
+pass (42 intentional opt-in skips), alongside production types, owned lint and
+Webpack build. No policy, role or deployed read admission is configured.
