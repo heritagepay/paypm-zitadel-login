@@ -325,6 +325,8 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     });
     expect(await store.currentAdmission({ ...binding, issuer: "https://other.test" })).toBeUndefined();
     expect(await store.currentAdmission({ ...binding, clientId: "another-client" })).toBeUndefined();
+    // An OIDC access-token jti is not the signed ID-token sid / actual provider session.
+    expect(await store.currentAdmission({ ...binding, baseSessionId: "aggregate-access-token-id" })).toBeUndefined();
     await store.revoke(row.provider_session_id!);
     expect(await store.currentAdmission(binding)).toBeUndefined();
     expect(await store.pendingRevocations()).toEqual([{ provider_session_id: row.provider_session_id }]);
