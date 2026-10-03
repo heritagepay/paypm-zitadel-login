@@ -12,7 +12,7 @@ try {
   await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtextextended('paypm-login-workforce-migrations-v1',0))`;
     await tx`CREATE TABLE IF NOT EXISTS login_workforce_migrations(version text PRIMARY KEY,checksum char(64) NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`;
-    for (const version of ["001_workforce_auth", "002_legacy_recovery_retirements"]) {
+    for (const version of ["001_workforce_auth", "002_legacy_recovery_retirements", "003_workforce_action_intents"]) {
       const source = await readFile(new URL(`../migrations/${version}.sql`, import.meta.url), "utf8"),
         checksum = createHash("sha256").update(source).digest("hex");
       const [old] = await tx`SELECT checksum FROM login_workforce_migrations WHERE version=${version}`;

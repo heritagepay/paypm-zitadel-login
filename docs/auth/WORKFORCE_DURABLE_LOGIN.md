@@ -19,8 +19,9 @@ in Login plaintext.
 
 The pinned postgres.js 3.4.7 runtime supports the existing production Node runtime.
 No CI or production package-manager migration is included. Apply
-`apps/login/migrations/001_workforce_auth.sql` with the dedicated migration role
-using `bun apps/login/scripts/migrate-workforce.mjs` and
+the ordered `apps/login/migrations/001_workforce_auth.sql`,
+`002_legacy_recovery_retirements.sql` and `003_workforce_action_intents.sql` with
+the dedicated migration role using `bun apps/login/scripts/migrate-workforce.mjs` and
 `PAYPM_WORKFORCE_MIGRATION_DATABASE_URL`. The runner locks and verifies its applied
 checksum; production TLS verifies certificates. Package the migration source
 with that operator artifact before release. The serving role uses
@@ -99,6 +100,25 @@ identical completion readback returns the original receipt and expiry. A changed
 assertion, consumed/expired receipt, missing marker or current admission/role
 revocation denies. Receipts remain action/payload/context-bound, 60 seconds and
 single use. Generic login time/AMR never substitutes for this ceremony.
+
+`startWorkforceAction({operationKey,action,payloadHash,appId,deploymentId,environment})`
+also requires a retained UUIDv4 operation key. Login reserves the exact server-derived
+base session, subject, client, OIDC request, logout epoch and requested action in SQL
+before creating the provider ceremony. The challenge options and provider token are
+sealed using the store key. The same command resumes that original ceremony and
+expiry after a lost Identity registration response; changed commands conflict.
+Identity's registration readback returns the original unexpired request only for
+the identical challenge and current admission/capability. Completed or expired
+ceremonies cannot be restarted.
+
+An in-flight provider creation is not repeated. After its five-second request
+deadline and ten-second settlement interval, a retry locates the exact subject and
+operation metadata, queues that ceremony for retirement, and requires a new operation.
+It cannot reconstruct lost public challenge options. Unknown, duplicate or truncated
+provider readback stays unavailable. Logout retires intents and queues known ceremony
+sessions immediately; a late provider response is queued without restoring admission.
+The action UI must retain one operation key during retries, then use a new key only
+for an explicitly new ceremony.
 
 ## Qualification and remaining delivery gates
 

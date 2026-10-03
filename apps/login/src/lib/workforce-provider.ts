@@ -104,6 +104,24 @@ export class WorkforceProvider {
   async revoke(sessionId: string) {
     await this.api.deleteSession({ sessionId });
   }
+  async findActionIntent(operationKey: string, subject: string) {
+    const result = await this.api.listSessions({
+      query: { limit: 100, offset: BigInt(0), asc: false },
+      queries: [{ query: { case: "userIdQuery", value: { id: subject } } }],
+    });
+    const matches = result.sessions.filter((s) => text(s.metadata["paypm_workforce_action_intent"]) === operationKey);
+    if (
+      result.details?.totalResult === undefined ||
+      Number(result.details.totalResult) > 100 ||
+      Number(result.details.totalResult) < result.sessions.length ||
+      matches.length !== 1 ||
+      matches[0].factors?.user?.id !== subject ||
+      matches[0].factors.user.organizationId !== this.organizationId ||
+      !verifiedFactor(matches[0], matches[0].factors.user.verifiedAt)
+    )
+      throw new WorkforceStoreError("action_provider_pending");
+    return matches[0].id;
+  }
 }
 export async function workforceProvider(serviceConfig: ServiceConfig, organizationId: string) {
   return new WorkforceProvider(await createServiceForHost(SessionService, serviceConfig), organizationId);

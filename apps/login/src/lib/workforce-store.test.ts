@@ -15,6 +15,7 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     sql = postgres(url!, { max: 10, connection: { search_path: schema } });
     await sql.unsafe(readFileSync(new URL("../../migrations/001_workforce_auth.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/002_legacy_recovery_retirements.sql", import.meta.url), "utf8"));
+    await sql.unsafe(readFileSync(new URL("../../migrations/003_workforce_action_intents.sql", import.meta.url), "utf8"));
     store = new WorkforceStore(sql, Buffer.alloc(32, 19));
   });
   afterEach(async () => {
@@ -174,6 +175,63 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await expect(sql`DELETE FROM login_workforce_passkey_attempts WHERE request_id=${requestId}`).rejects.toThrow(
       "retained",
     );
+  });
+  it("reserves one immutable initial passkey intent, encrypts provider material and denies late logout restoration", async () => {
+    const base = await ready(),
+      attempt = await store.attempt(base.id, randomUUID(), "123456");
+    await store.verified(attempt.id, new Date(), new Date(Date.now() + 100000));
+    const input = {
+      operationKey: randomUUID(),
+      issuer: base.issuer,
+      providerSubject: base.provider_subject,
+      baseSessionId: base.provider_session_id!,
+      clientId: base.client_id,
+      requestId: base.request_id,
+      contextId: "300",
+      appId: "identity-admin",
+      deploymentId: "heritagepay",
+      environment: "production" as const,
+      action: "identity.recovery.review",
+      payloadHash: "a".repeat(64),
+    };
+    const rows = await Promise.all(Array.from({ length: 5 }, () => store.reserveAction(input)));
+    expect(new Set(rows.map((r) => r.operation_key)).size).toBe(1);
+    expect((await Promise.all(rows.map((r) => store.claimAction(r.operation_key)))).filter(Boolean)).toHaveLength(1);
+    await expect(store.reserveAction({ ...input, payloadHash: "b".repeat(64) })).rejects.toMatchObject({
+      code: "action_intent_conflict",
+    });
+    const material = {
+      sessionId: "actual-provider-step",
+      sessionToken: "protected-actual-step-token",
+      publicKey: { challenge: "actual-provider-challenge", userVerification: "required" },
+    };
+    const created = await store.actionCreated(input.operationKey, material);
+    expect(JSON.stringify(created)).not.toContain(material.sessionToken);
+    expect(store.actionMaterial(created)).toEqual(material);
+    expect(await store.actionCreated(input.operationKey, material)).toEqual(created);
+    const requestId = randomUUID();
+    const registered = await store.actionRegistered(input.operationKey, requestId);
+    expect(await store.actionRegistered(input.operationKey, requestId)).toEqual(registered);
+    await expect(store.actionRegistered(input.operationKey, randomUUID())).rejects.toMatchObject({
+      code: "action_intent_conflict",
+    });
+    await expect(
+      sql`UPDATE login_workforce_action_intents SET request_hash=${"c".repeat(64)} WHERE operation_key=${input.operationKey}`,
+    ).rejects.toThrow("immutable");
+    await store.revokeUser(base.issuer, base.provider_subject);
+    await expect(store.reserveAction(input)).rejects.toMatchObject({ code: "action_intent_not_active" });
+    await expect(
+      store.actionCreated(input.operationKey, { ...material, sessionId: "late-actual-provider-step" }),
+    ).rejects.toMatchObject({ code: "action_intent_not_active" });
+    expect(await store.pendingRevocations()).toEqual(
+      expect.arrayContaining([
+        { provider_session_id: material.sessionId },
+        { provider_session_id: "late-actual-provider-step" },
+      ]),
+    );
+    expect(await sql`SELECT state FROM login_workforce_action_intents WHERE operation_key=${input.operationKey}`).toEqual([
+      { state: "retired" },
+    ]);
   });
   it("durably reserves a single exact reviewed legacy retirement and preserves confirmed evidence", async () => {
     const caseId = randomUUID(),

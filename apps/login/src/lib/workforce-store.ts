@@ -1,6 +1,44 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import postgres, { type Sql, type TransactionSql } from "postgres";
 import "server-only";
+import { workforceAssertionHash } from "./workforce-assertion";
+
+export interface WorkforceActionIntentBinding {
+  operationKey: string;
+  issuer: string;
+  providerSubject: string;
+  baseSessionId: string;
+  clientId: string;
+  requestId: string;
+  contextId: string;
+  appId: string;
+  deploymentId: string;
+  environment: "production" | "staging" | "sandbox";
+  action: string;
+  payloadHash: string;
+}
+export interface WorkforceActionIntent {
+  operation_key: string;
+  request_hash: string;
+  issuer: string;
+  provider_subject: string;
+  base_session_id: string;
+  client_id: string;
+  request_id: string;
+  epoch: string;
+  state: "reserved" | "created" | "registered" | "retired";
+  created_at: Date;
+  expires_at: Date;
+  provider_session_id: string | null;
+  provider_material_sealed: string | null;
+  provider_started_at: Date | null;
+  identity_request_id: string | null;
+}
+export interface WorkforceActionProviderMaterial {
+  sessionId: string;
+  sessionToken: string;
+  publicKey: Record<string, unknown>;
+}
 
 export interface WorkforceChallengeBinding {
   operationKey: string;
@@ -69,9 +107,12 @@ export class WorkforceStore {
   }
   token(row: WorkforceChallenge) {
     if (!row.provider_token_sealed) throw new WorkforceStoreError("provider_session_pending");
-    const [iv, tag, data] = row.provider_token_sealed.split(".").map((v) => Buffer.from(v, "base64url")),
+    return this.open(row.id, row.provider_token_sealed);
+  }
+  private open(id: string, sealed: string) {
+    const [iv, tag, data] = sealed.split(".").map((v) => Buffer.from(v, "base64url")),
       cipher = createDecipheriv("aes-256-gcm", this.tokenKey(), iv);
-    cipher.setAAD(Buffer.from(row.id));
+    cipher.setAAD(Buffer.from(id));
     cipher.setAuthTag(tag);
     return Buffer.concat([cipher.update(data), cipher.final()]).toString("utf8");
   }
@@ -260,6 +301,96 @@ export class WorkforceStore {
       return { first: inserted.length === 1 };
     });
   }
+  private async currentAction(tx: Connection, row: WorkforceActionIntent) {
+    const current =
+      await tx`SELECT a.provider_session_id FROM login_workforce_admissions a JOIN login_workforce_epochs e ON a.issuer=e.issuer AND a.provider_subject=e.provider_subject AND a.epoch=e.epoch WHERE a.provider_session_id=${row.base_session_id} AND a.issuer=${row.issuer} AND a.provider_subject=${row.provider_subject} AND a.client_id=${row.client_id} AND a.request_id=${row.request_id} AND a.epoch=${row.epoch} AND a.revoked_at IS NULL AND a.absolute_expires_at>clock_timestamp() AND a.last_seen_at>clock_timestamp()-interval '30 minutes' FOR SHARE OF a,e`;
+    return current.length === 1 && row.state !== "retired" && row.expires_at.getTime() > Date.now();
+  }
+  async reserveAction(input: WorkforceActionIntentBinding) {
+    const requestHash = workforceAssertionHash(input);
+    return this.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${input.operationKey},0))`;
+      const [old] = await tx<
+        WorkforceActionIntent[]
+      >`SELECT * FROM login_workforce_action_intents WHERE operation_key=${input.operationKey}`;
+      if (old) {
+        if (old.request_hash !== requestHash) throw new WorkforceStoreError("action_intent_conflict");
+        if (!(await this.currentAction(tx, old))) throw new WorkforceStoreError("action_intent_not_active");
+        return old;
+      }
+      const [admission] = await tx<
+        { epoch: string }[]
+      >`SELECT a.epoch FROM login_workforce_admissions a JOIN login_workforce_epochs e ON a.issuer=e.issuer AND a.provider_subject=e.provider_subject AND a.epoch=e.epoch WHERE a.provider_session_id=${input.baseSessionId} AND a.issuer=${input.issuer} AND a.provider_subject=${input.providerSubject} AND a.client_id=${input.clientId} AND a.request_id=${input.requestId} AND a.revoked_at IS NULL AND a.absolute_expires_at>clock_timestamp() AND a.last_seen_at>clock_timestamp()-interval '30 minutes' FOR SHARE OF a,e`;
+      if (!admission) throw new WorkforceStoreError("action_intent_not_active");
+      const [row] = await tx<
+        WorkforceActionIntent[]
+      >`INSERT INTO login_workforce_action_intents(operation_key,request_hash,issuer,provider_subject,base_session_id,client_id,request_id,epoch,binding) VALUES(${input.operationKey},${requestHash},${input.issuer},${input.providerSubject},${input.baseSessionId},${input.clientId},${input.requestId},${admission.epoch},${tx.json({ ...input })}) RETURNING *`;
+      return row;
+    });
+  }
+  async claimAction(operationKey: string) {
+    return this.sql.begin(async (tx) => {
+      const [row] = await tx<
+        WorkforceActionIntent[]
+      >`SELECT * FROM login_workforce_action_intents WHERE operation_key=${operationKey} FOR UPDATE`;
+      if (!row || !(await this.currentAction(tx, row))) throw new WorkforceStoreError("action_intent_not_active");
+      const claimed =
+        await tx`UPDATE login_workforce_action_intents SET provider_started_at=clock_timestamp() WHERE operation_key=${operationKey} AND state='reserved' AND provider_started_at IS NULL RETURNING operation_key`;
+      return claimed.length === 1;
+    });
+  }
+  actionMaterial(row: WorkforceActionIntent): WorkforceActionProviderMaterial {
+    if (!row.provider_material_sealed) throw new WorkforceStoreError("action_provider_pending");
+    return JSON.parse(
+      this.open("action:" + row.operation_key, row.provider_material_sealed),
+    ) as WorkforceActionProviderMaterial;
+  }
+  async actionCreated(operationKey: string, material: WorkforceActionProviderMaterial) {
+    const row = await this.sql.begin(async (tx) => {
+      const [row] = await tx<
+        WorkforceActionIntent[]
+      >`SELECT * FROM login_workforce_action_intents WHERE operation_key=${operationKey} FOR UPDATE`;
+      if (!row || !(await this.currentAction(tx, row))) {
+        await tx`INSERT INTO login_workforce_revocations(provider_session_id) VALUES(${material.sessionId}) ON CONFLICT DO NOTHING`;
+        return undefined;
+      }
+      if (row.state !== "reserved") {
+        if (workforceAssertionHash(this.actionMaterial(row)) !== workforceAssertionHash(material))
+          throw new WorkforceStoreError("action_intent_conflict");
+        return row;
+      }
+      if (!row.provider_started_at) throw new WorkforceStoreError("action_provider_not_reserved");
+      const [saved] = await tx<
+        WorkforceActionIntent[]
+      >`UPDATE login_workforce_action_intents SET state='created',provider_session_id=${material.sessionId},provider_material_sealed=${this.seal("action:" + operationKey, JSON.stringify(material))} WHERE operation_key=${operationKey} RETURNING *`;
+      return saved;
+    });
+    if (!row) throw new WorkforceStoreError("action_intent_not_active");
+    return row;
+  }
+  async actionRegistered(operationKey: string, requestId: string) {
+    return this.sql.begin(async (tx) => {
+      const [row] = await tx<
+        WorkforceActionIntent[]
+      >`SELECT * FROM login_workforce_action_intents WHERE operation_key=${operationKey} FOR UPDATE`;
+      if (!row || !(await this.currentAction(tx, row)) || !["created", "registered"].includes(row.state))
+        throw new WorkforceStoreError("action_intent_not_active");
+      if (row.identity_request_id) {
+        if (row.identity_request_id !== requestId) throw new WorkforceStoreError("action_intent_conflict");
+        return row;
+      }
+      const [saved] = await tx<
+        WorkforceActionIntent[]
+      >`UPDATE login_workforce_action_intents SET state='registered',identity_request_id=${requestId} WHERE operation_key=${operationKey} RETURNING *`;
+      return saved;
+    });
+  }
+  async abandonAction(operationKey: string, providerSessionId: string) {
+    await this.sql.begin(async (tx) => {
+      await tx`INSERT INTO login_workforce_revocations(provider_session_id) VALUES(${providerSessionId}) ON CONFLICT DO NOTHING`;
+      await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE operation_key=${operationKey} AND state='reserved'`;
+    });
+  }
   async reserveLegacyRetirement(
     caseId: string,
     decisionId: string,
@@ -316,6 +447,8 @@ export class WorkforceStore {
       if (!row) return;
       await this.retire(tx, row);
       await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE provider_session_id=${sessionId} AND revoked_at IS NULL`;
+      await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE base_session_id=${sessionId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+      await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE base_session_id=${sessionId} AND state<>'retired'`;
     });
   }
   async revokeUser(issuer: string, userId: string) {
@@ -326,6 +459,8 @@ export class WorkforceStore {
       >`SELECT * FROM login_workforce_challenges WHERE issuer=${issuer} AND provider_subject=${userId} AND state<>'retired' FOR UPDATE`;
       for (const row of rows) await this.retire(tx, row);
       await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE issuer=${issuer} AND provider_subject=${userId} AND revoked_at IS NULL`;
+      await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE issuer=${issuer} AND provider_subject=${userId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+      await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE issuer=${issuer} AND provider_subject=${userId} AND state<>'retired'`;
     });
   }
   async pendingRevocations() {

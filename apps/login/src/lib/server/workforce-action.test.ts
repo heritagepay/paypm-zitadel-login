@@ -1,6 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { UserVerificationRequirement } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSessionCookieById } from "../cookies";
 import { ClassifiedConnectError } from "../grpc/interceptors/error-classification";
@@ -8,6 +8,7 @@ import { deleteActionState, getActionState, storeActionState } from "../workforc
 import { workforceAssertionHash } from "../workforce-assertion";
 import { workforceIdentityRequest } from "../workforce-identity-client";
 import { workforceEligible } from "../workforce-policy";
+import { workforceProvider } from "../workforce-provider";
 import { readWorkforceState } from "../workforce-state";
 import { workforceStore } from "../workforce-store";
 import { createSessionFromChecksAndChallenges, getSession, getUserByID, setSession } from "../zitadel";
@@ -23,6 +24,8 @@ vi.mock("../zitadel", () => ({
 vi.mock("../cookies", () => ({ getSessionCookieById: vi.fn() }));
 vi.mock("../workforce-state", () => ({ readWorkforceState: vi.fn() }));
 vi.mock("../workforce-store", () => ({ workforceStore: vi.fn() }));
+vi.mock("../workforce-provider", () => ({ workforceProvider: vi.fn() }));
+vi.mock("../workforce-revocations", () => ({ flushWorkforceRevocations: vi.fn() }));
 vi.mock("../workforce-action-state", async (original) => ({
   ...(await original<typeof import("../workforce-action-state")>()),
   getActionState: vi.fn(),
@@ -38,6 +41,7 @@ const ts = (offset: number) => ({ seconds: BigInt(Math.floor((Date.now() + offse
 const challenge = Buffer.from("exact-provider-challenge-1234567").toString("base64url");
 const requestId = "a200b513-7d03-45cb-bdd2-5d2c98d8765f";
 const command = {
+  operationKey: randomUUID(),
   action: "identity.recovery.review",
   payloadHash: "a".repeat(64),
   appId: "wallet_mobile",
@@ -97,12 +101,32 @@ beforeEach(() => {
     issuedAt: Date.now() - 10000,
     expiresAt: Date.now() + 28000000,
   });
+  let row = {
+    operation_key: command.operationKey,
+    created_at: new Date(Date.now() - 10),
+    expires_at: new Date(Date.now() + 299990),
+    provider_started_at: null as Date | null,
+    state: "reserved",
+    identity_request_id: null as string | null,
+  };
+  const material = {
+    sessionId: "456",
+    sessionToken: "must-not-return",
+    publicKey: { challenge, rpId: "login.paypm.test", userVerification: "required" },
+  };
   vi.mocked(workforceStore).mockReturnValue({
     admission: vi.fn(async () => true),
     passkeyAttempt: vi.fn(async () => ({ first: true })),
     passkeyAttemptVerified: vi.fn(),
     passkeyAttemptFailed: vi.fn(),
+    reserveAction: vi.fn(async () => row),
+    claimAction: vi.fn(async () => true),
+    actionCreated: vi.fn(async () => (row = { ...row, state: "created" })),
+    actionMaterial: vi.fn(() => material),
+    actionRegistered: vi.fn(async () => (row = { ...row, state: "registered", identity_request_id: requestId })),
+    abandonAction: vi.fn(),
   } as any);
+  vi.mocked(workforceProvider).mockResolvedValue({ findActionIntent: vi.fn(async () => "456") } as any);
   vi.mocked(getSessionCookieById).mockResolvedValue({
     id: "123",
     token: "must-not-return",
@@ -145,7 +169,11 @@ describe("fresh workforce action ceremony producer", () => {
     expect(workforceIdentityRequest).toHaveBeenCalledWith(
       "internal/v1/workforce-action-proofs/requests",
       expect.objectContaining({
-        ...command,
+        action: command.action,
+        payloadHash: command.payloadHash,
+        appId: command.appId,
+        deploymentId: command.deploymentId,
+        environment: command.environment,
         providerSubject: "700",
         baseSessionId: "123",
         stepSessionId: "456",
@@ -155,6 +183,44 @@ describe("fresh workforce action ceremony producer", () => {
       }),
     );
     expect(storeActionState).toHaveBeenCalled();
+  });
+  it("requires an operation UUID and does not create provider state before durable reservation", async () => {
+    expect(await startWorkforceAction({ ...command, operationKey: "" })).toHaveProperty("error");
+    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+    vi.mocked(workforceStore().reserveAction).mockRejectedValueOnce(new Error("database unavailable"));
+    expect(await startWorkforceAction(command)).toHaveProperty("error");
+    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+  });
+  it("recovers a lost Identity registration through the same protected provider material and operation", async () => {
+    vi.mocked(workforceIdentityRequest).mockRejectedValueOnce(new Error("response lost")).mockResolvedValue({ requestId });
+    expect(await startWorkforceAction(command)).toHaveProperty("error");
+    expect(await startWorkforceAction(command)).toHaveProperty("requestId", requestId);
+    expect(createSessionFromChecksAndChallenges).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(workforceIdentityRequest).mock.calls[0]).toEqual(vi.mocked(workforceIdentityRequest).mock.calls[1]);
+  });
+  it("does not repeat an in-flight creation and retires only an exact metadata readback after an uncertain timeout", async () => {
+    const store = workforceStore();
+    vi.mocked(store.claimAction).mockResolvedValue(false);
+    vi.mocked(store.reserveAction).mockResolvedValue({
+      operation_key: command.operationKey,
+      state: "reserved",
+      created_at: new Date(Date.now() - 1000),
+      expires_at: new Date(Date.now() + 290000),
+      provider_started_at: new Date(),
+    } as any);
+    expect(await startWorkforceAction(command)).toHaveProperty("error");
+    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+    vi.mocked(store.reserveAction).mockResolvedValue({
+      operation_key: command.operationKey,
+      state: "reserved",
+      created_at: new Date(Date.now() - 20000),
+      expires_at: new Date(Date.now() + 280000),
+      provider_started_at: new Date(Date.now() - 15000),
+    } as any);
+    expect(await startWorkforceAction(command)).toHaveProperty("error");
+    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+    expect(store.abandonAction).toHaveBeenCalledWith(command.operationKey, "456");
   });
   it.each(["no-policy", "no-admission", "revoked", "wrong-rp", "preferred-uv"])(
     "denies %s before accepting a proof",

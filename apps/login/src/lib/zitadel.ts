@@ -311,16 +311,23 @@ export async function createSessionFromChecksAndChallenges({
   checks,
   challenges,
   lifetime,
+  metadata,
+  timeoutMs,
 }: WithServiceConfig<{
   checks: Checks;
   challenges?: RequestChallenges;
   lifetime: Duration;
+  metadata?: Record<string, Uint8Array>;
+  timeoutMs?: number;
 }>) {
   const sessionService: Client<typeof SessionService> = await createServiceForHost(SessionService, serviceConfig);
 
   const userAgent = await getUserAgent();
 
-  return sessionService.createSession({ ...{ checks, lifetime, userAgent }, ...(challenges ? { challenges } : {}) }, {});
+  return sessionService.createSession(
+    { ...{ checks, lifetime, userAgent }, ...(challenges ? { challenges } : {}), ...(metadata ? { metadata } : {}) },
+    timeoutMs === undefined ? {} : { timeoutMs: Math.min(10000, Math.max(1000, timeoutMs)) },
+  );
 }
 
 export async function createSessionForUserIdAndIdpIntent({

@@ -12,6 +12,8 @@ import { deleteActionState, encryptActionState, getActionState, storeActionState
 import { workforceAssertionHash } from "../workforce-assertion";
 import { workforceIdentityRequest } from "../workforce-identity-client";
 import { workforceEligible, workforcePolicy } from "../workforce-policy";
+import { workforceProvider } from "../workforce-provider";
+import { flushWorkforceRevocations } from "../workforce-revocations";
 import { readWorkforceState } from "../workforce-state";
 import { workforceStore } from "../workforce-store";
 import { createSessionFromChecksAndChallenges, getSession, getUserByID, setSession } from "../zitadel";
@@ -85,6 +87,7 @@ async function baseContext() {
   return { policy, flow, session, serviceConfig };
 }
 export async function startWorkforceAction(command: {
+  operationKey: string;
   action: string;
   payloadHash: string;
   appId: string;
@@ -93,10 +96,34 @@ export async function startWorkforceAction(command: {
 }) {
   try {
     const { rpId } = originPolicy();
-    if (!/^identity\.[a-z][a-z0-9.]{1,160}$/.test(command.action) || !/^([a-f0-9]{64})$/.test(command.payloadHash))
+    if (
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(command.operationKey) ||
+      !/^identity\.[a-z][a-z0-9.]{1,160}$/.test(command.action) ||
+      !/^[a-f0-9]{64}$/.test(command.payloadHash) ||
+      !/^[a-z][a-z0-9_.-]{0,127}$/.test(command.appId) ||
+      !/^[a-z0-9_]{1,128}$/.test(command.deploymentId) ||
+      !["production", "staging", "sandbox"].includes(command.environment)
+    )
       return unavailable();
-    const { policy, flow, serviceConfig } = await baseContext();
-    const issuedAt = Date.now();
+    const { policy, flow, serviceConfig } = await baseContext(),
+      store = workforceStore();
+    const scope = {
+      action: command.action,
+      payloadHash: command.payloadHash,
+      appId: command.appId,
+      deploymentId: command.deploymentId,
+      environment: command.environment,
+    };
+    let row = await store.reserveAction({
+      operationKey: command.operationKey,
+      issuer: policy.issuer,
+      providerSubject: flow.userId,
+      baseSessionId: flow.sessionId,
+      clientId: flow.clientId,
+      requestId: flow.requestId,
+      contextId: policy.organizationId,
+      ...scope,
+    });
     encryptActionState({
       requestId: "pending",
       baseSessionId: flow.sessionId,
@@ -105,53 +132,84 @@ export async function startWorkforceAction(command: {
       userId: flow.userId,
       clientId: flow.clientId,
       challenge: "pending",
-      issuedAt,
-      expiresAt: issuedAt + 300000,
+      issuedAt: row.created_at.getTime(),
+      expiresAt: row.expires_at.getTime(),
     });
-    const created = await createSessionFromChecksAndChallenges({
-      serviceConfig,
-      checks: create(ChecksSchema, { user: { search: { case: "userId", value: flow.userId } } }),
-      challenges: create(RequestChallengesSchema, {
-        webAuthN: { domain: rpId, userVerificationRequirement: UserVerificationRequirement.REQUIRED },
-      }),
-      lifetime: sessionLifetime({ seconds: BigInt(300), nanos: 0 } as Duration),
-    });
-    const options = created.challenges?.webAuthN?.publicKeyCredentialRequestOptions as JsonObject | undefined;
-    const publicKey = options?.publicKey;
-    if (
-      !created.sessionId ||
-      !created.sessionToken ||
-      !publicKey ||
-      typeof publicKey !== "object" ||
-      Array.isArray(publicKey) ||
-      typeof publicKey.challenge !== "string" ||
-      publicKey.rpId !== rpId ||
-      publicKey.userVerification !== "required"
-    )
-      return unavailable();
+    if (row.state === "reserved") {
+      if (!(await store.claimAction(row.operation_key))) {
+        if (!row.provider_started_at || Date.now() - row.provider_started_at.getTime() < 10000) return unavailable();
+        // A lost creation response cannot reconstruct the original public options.
+        // Locate only this exact provider metadata, retire it durably, and require a new operation.
+        const provider = await workforceProvider(serviceConfig, policy.organizationId);
+        const orphan = await provider.findActionIntent(row.operation_key, flow.userId);
+        await store.abandonAction(row.operation_key, orphan);
+        await flushWorkforceRevocations(store, provider);
+        return unavailable();
+      }
+      const created = await createSessionFromChecksAndChallenges({
+        serviceConfig,
+        checks: create(ChecksSchema, { user: { search: { case: "userId", value: flow.userId } } }),
+        challenges: create(RequestChallengesSchema, {
+          webAuthN: { domain: rpId, userVerificationRequirement: UserVerificationRequirement.REQUIRED },
+        }),
+        metadata: { paypm_workforce_action_intent: new TextEncoder().encode(row.operation_key) },
+        timeoutMs: 5000,
+        lifetime: sessionLifetime({
+          seconds: BigInt(Math.floor((row.expires_at.getTime() - Date.now()) / 1000)),
+          nanos: 0,
+        } as Duration),
+      });
+      const options = created.challenges?.webAuthN?.publicKeyCredentialRequestOptions as JsonObject | undefined,
+        publicKey = options?.publicKey;
+      if (
+        !created.sessionId ||
+        !created.sessionToken ||
+        !publicKey ||
+        typeof publicKey !== "object" ||
+        Array.isArray(publicKey) ||
+        typeof publicKey.challenge !== "string" ||
+        publicKey.rpId !== rpId ||
+        publicKey.userVerification !== "required"
+      )
+        return unavailable();
+      row = await store.actionCreated(row.operation_key, {
+        sessionId: created.sessionId,
+        sessionToken: created.sessionToken,
+        publicKey,
+      });
+    }
+    const material = store.actionMaterial(row);
     const result = await workforceIdentityRequest("internal/v1/workforce-action-proofs/requests", {
       providerSubject: flow.userId,
       baseSessionId: flow.sessionId,
-      stepSessionId: created.sessionId,
+      stepSessionId: material.sessionId,
       clientId: flow.clientId,
       contextId: policy.organizationId,
-      ...command,
-      challenge: publicKey.challenge,
+      ...scope,
+      challenge: material.publicKey.challenge,
     });
-    if (!result || typeof result !== "object" || !("requestId" in result) || typeof result.requestId !== "string")
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !("requestId" in result) ||
+      typeof result.requestId !== "string" ||
+      !/^[a-f0-9-]{36}$/i.test(result.requestId)
+    )
       return unavailable();
+    row = await store.actionRegistered(row.operation_key, result.requestId);
+    await baseContext();
     await storeActionState({
       requestId: result.requestId,
       baseSessionId: flow.sessionId,
-      stepSessionId: created.sessionId,
-      stepSessionToken: created.sessionToken,
+      stepSessionId: material.sessionId,
+      stepSessionToken: material.sessionToken,
       userId: flow.userId,
       clientId: flow.clientId,
-      challenge: publicKey.challenge,
-      issuedAt,
-      expiresAt: issuedAt + 300000,
+      challenge: material.publicKey.challenge as string,
+      issuedAt: row.created_at.getTime(),
+      expiresAt: row.expires_at.getTime(),
     });
-    return { requestId: result.requestId, publicKey, expiresAt: new Date(issuedAt + 300000).toISOString() };
+    return { requestId: result.requestId, publicKey: material.publicKey, expiresAt: row.expires_at.toISOString() };
   } catch {
     return unavailable();
   }
