@@ -3,11 +3,13 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import deploymentGrantFixture from "../../test-fixtures/operations-deployment-grant.json";
 import grantFixture from "../../test-fixtures/operations-governed-grant.json";
+import statusFixture from "../../test-fixtures/operations-original-status.json";
 import { readOperationsActionAuthority } from "./operations-action-authority";
 import {
   cancelOperationsPublicAction,
   completeOperationsPublicAction,
   consumeOperationsAction,
+  observeOperationsAction,
   readOperationsAction,
   readOperationsPublicChallenge,
   startOperationsAction,
@@ -183,6 +185,7 @@ beforeEach(() => {
     caller: vi.fn(() => material),
     provider: vi.fn(() => provider),
     row: vi.fn(async () => row),
+    observe: vi.fn(async () => row),
     capability: vi.fn(async () => row),
     clearExpired: vi.fn(),
     retire: vi.fn(),
@@ -587,6 +590,222 @@ describe("separate Operations-owned action ceremony", () => {
     expect((await send({ receipt, expected: { ...e, payloadHash: "b".repeat(64) }, command })).status).toBe(403);
     expect((await send({ receipt: "paypm-wf1.identity-proof", expected: e, command })).status).toBe(403);
     expect(store.consume).not.toHaveBeenCalled();
+  });
+  const statusRequest = (b = row.binding, token = "b".repeat(40)) =>
+    new Request("https://login.paypm.test/status", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        idToken: material.idToken,
+        accessToken: material.accessToken,
+        nonce: material.nonce,
+        clientId: material.clientId,
+        expected: b.expected,
+        command: b.command,
+      }),
+    });
+  function noStatusEffects() {
+    for (const method of ["reserve", "claimCreation", "attempt", "verified", "consume", "retire", "cancel", "clearExpired"])
+      expect(store[method]).not.toHaveBeenCalled();
+    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+    expect(setSession).not.toHaveBeenCalled();
+    expect(store.caller).not.toHaveBeenCalled();
+    expect(store.receipt).not.toHaveBeenCalled();
+  }
+  it("emits the frozen nine-field original-status wire with no receipt, challenge or raw credentials", async () => {
+    row = {
+      ...row,
+      id: statusFixture.response.requestId,
+      issuer: statusFixture.request.expected.issuer,
+      provider_subject: statusFixture.request.expected.providerSubject,
+      base_session_id: statusFixture.request.expected.baseSessionId,
+      client_id: statusFixture.request.expected.clientId,
+      binding: {
+        expected: statusFixture.request.expected as any,
+        command: statusFixture.request.command,
+        capabilityDecisionId: statusFixture.response.capabilityDecisionId,
+        resource: {
+          merchantBusinessId: statusFixture.request.command.merchantBusinessId,
+          organizationId: statusFixture.request.command.organizationId,
+          currency: "XOF",
+        },
+      },
+      expires_at: new Date(statusFixture.response.requestExpiresAt),
+      state: "created",
+      provider_started_at: new Date(now.getTime() - 4000),
+      provider_session_id: provider.sessionId,
+    };
+    session.metadata.paypm_operations_action_intent = new TextEncoder().encode(row.id);
+    session.factors.user.id = row.binding.expected.providerSubject;
+    session.factors.user.organizationId = row.binding.expected.contextId;
+    vi.mocked(workforcePolicy).mockReturnValue({
+      issuer: row.binding.expected.issuer,
+      organizationId: row.binding.expected.contextId,
+      emailOtpReady: true,
+    } as any);
+    vi.mocked(readOperationsAdmission).mockImplementation(async () =>
+      Response.json({
+        ...row.binding.expected,
+        active: true,
+        plane: "workforce",
+        authenticationClass: "workforce_limited",
+        requestId: row.request_id,
+      }),
+    );
+    vi.mocked(readOperationsActionAuthority).mockResolvedValue(row.binding);
+    const response = await observeOperationsAction(
+      new Request("https://login.paypm.test" + statusFixture.path, {
+        method: "POST",
+        headers: auth(),
+        body: JSON.stringify(statusFixture.request),
+      }),
+      row.id,
+    );
+    expect(await response.json()).toEqual(statusFixture.response);
+    noStatusEffects();
+  });
+  it.each(["settlement", "grant", "deployment-grant"] as const)(
+    "observes the absent original %s operation using only its distinct purpose and current proof pair",
+    async (family) => {
+      if (family !== "settlement") grant(family);
+      store.observe.mockResolvedValue(undefined);
+      const response = await observeOperationsAction(
+        statusRequest(row.binding, (family === "settlement" ? "b" : "g").repeat(40)),
+        id,
+        family,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.json()).toEqual({
+        requestId: id,
+        state: "not_started",
+        expected: row.binding.expected,
+        command: row.binding.command,
+        capabilityDecisionId: row.binding.capabilityDecisionId,
+        requestExpiresAt: null,
+        receiptExpiresAt: null,
+        providerRetirement: "not_started",
+        checkedAt: now.toISOString(),
+      });
+      noStatusEffects();
+    },
+  );
+  it("a durable reservation with no creation claim is observed without consuming its one creation chance", async () => {
+    const response = await observeOperationsAction(statusRequest(), id);
+    expect(await response.json()).toMatchObject({ state: "not_started", requestExpiresAt: row.expires_at.toISOString() });
+    noStatusEffects();
+  });
+  it("unknown creation remains pending after local expiry when a complete provider search finds no result", async () => {
+    row.provider_started_at = new Date(now.getTime() - 400000);
+    row.expires_at = new Date(now.getTime() - 100000);
+    const inspectActionIntent = vi.fn(async () => undefined);
+    vi.mocked(workforceProvider).mockResolvedValue({ inspectActionIntent } as any);
+    expect(await (await observeOperationsAction(statusRequest(), id)).json()).toMatchObject({
+      state: "pending",
+      providerRetirement: "pending",
+    });
+    expect(inspectActionIntent).toHaveBeenCalledWith(id, e.providerSubject, "paypm_operations_action_intent");
+    noStatusEffects();
+  });
+  it.each(["created", "cancelled", "retired"] as const)(
+    "a local %s state does not imply that an actual provider session has retired",
+    async (state) => {
+      row.state = state;
+      row.provider_started_at = new Date(now.getTime() - 5000);
+      row.provider_session_id = provider.sessionId;
+      session.metadata.paypm_operations_action_intent = new TextEncoder().encode(id);
+      if (state === "retired") row.expires_at = new Date(now.getTime() - 1);
+      const response = await observeOperationsAction(statusRequest(), id);
+      expect(await response.json()).toMatchObject({
+        state: state === "cancelled" ? "cancelled" : "pending",
+        providerRetirement: "pending",
+      });
+      noStatusEffects();
+    },
+  );
+  it.each(["expired", "absent"])(
+    "an actually bound provider %s response establishes retirement without deletion",
+    async (kind) => {
+      row.state = "retired";
+      row.provider_started_at = new Date(now.getTime() - 5000);
+      row.provider_session_id = provider.sessionId;
+      session.metadata.paypm_operations_action_intent = new TextEncoder().encode(id);
+      if (kind === "expired") {
+        row.expires_at = new Date(now.getTime() - 1);
+        session.expirationDate = ts(-1000);
+      } else {
+        const { ClassifiedConnectError } = await import("./grpc/interceptors/error-classification"),
+          { ConnectError, Code } = await import("@connectrpc/connect");
+        vi.mocked(getSession).mockRejectedValue(new ClassifiedConnectError(new ConnectError("absent", Code.NotFound)));
+      }
+      expect(await (await observeOperationsAction(statusRequest(), id)).json()).toMatchObject({
+        state: kind === "expired" ? "expired" : "retired",
+        providerRetirement: "confirmed",
+      });
+      noStatusEffects();
+    },
+  );
+  it("verified state is provider-accepted evidence without exposing or consuming its receipt", async () => {
+    row.state = "verified";
+    row.provider_started_at = new Date(now.getTime() - 5000);
+    row.provider_session_id = provider.sessionId;
+    row.verified_at = now;
+    row.receipt_expires_at = new Date(now.getTime() + 60000);
+    row.assertion_hash = workforceAssertionHash(assertion());
+    row.verification_started_at = new Date(now.getTime() - 1000);
+    session.metadata.paypm_operations_action_intent = new TextEncoder().encode(id);
+    session.metadata["paypm_operations_action_accept_" + id] = new TextEncoder().encode(row.assertion_hash);
+    const response = await observeOperationsAction(statusRequest(), id);
+    expect(await response.json()).toMatchObject({
+      state: "verified",
+      receiptExpiresAt: row.receipt_expires_at.toISOString(),
+    });
+    noStatusEffects();
+  });
+  it("a late result of a creation race remains pending rather than being called absent", async () => {
+    store.observe.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ ...row, provider_started_at: now });
+    expect(await (await observeOperationsAction(statusRequest(), id)).json()).toMatchObject({
+      state: "pending",
+      providerRetirement: "pending",
+    });
+    noStatusEffects();
+  });
+  it.each([
+    "new_base",
+    "logout",
+    "owner_revoked",
+    "owner_changed",
+    "operation_conflict",
+    "wrong_family",
+    "provider_mismatch",
+  ])("status denies %s without reissuing, replaying, or restoring the old operation", async (kind) => {
+    if (kind === "new_base")
+      vi.mocked(readOperationsAdmission).mockResolvedValue(
+        Response.json({
+          ...e,
+          baseSessionId: "999",
+          active: true,
+          plane: "workforce",
+          authenticationClass: "workforce_limited",
+          requestId: "oidc-request",
+        }),
+      );
+    if (kind === "logout") vi.mocked(readOperationsAdmission).mockResolvedValue(new Response(null, { status: 403 }));
+    if (kind === "owner_revoked") vi.mocked(readOperationsActionAuthority).mockRejectedValue(new Error("revoked"));
+    if (kind === "owner_changed")
+      vi.mocked(readOperationsActionAuthority)
+        .mockResolvedValueOnce(binding)
+        .mockResolvedValueOnce({ ...binding, capabilityDecisionId: randomUUID() });
+    if (kind === "operation_conflict") store.observe.mockRejectedValue(new Error("conflict"));
+    if (kind === "provider_mismatch") {
+      row.provider_started_at = new Date(now.getTime() - 5000);
+      row.provider_session_id = provider.sessionId;
+      session.metadata.paypm_operations_action_intent = new TextEncoder().encode("another-original-request");
+    }
+    expect(
+      (await observeOperationsAction(statusRequest(), id, kind === "wrong_family" ? "grant" : "settlement")).status,
+    ).toBe(403);
+    noStatusEffects();
   });
   it("cancellation persists before callback and a later read returns no receipt", async () => {
     row.state = "created";

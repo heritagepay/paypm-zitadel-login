@@ -150,6 +150,39 @@ export class WorkforceProvider {
       throw new WorkforceStoreError("action_provider_pending");
     return matches[0].id;
   }
+  /** Complete, bounded read only. An absent result never proves an in-flight creation failed. */
+  async inspectActionIntent(operationKey: string, subject: string, metadataKey: string) {
+    const result = await this.api.listSessions({
+      query: { limit: 100, offset: BigInt(0), asc: false },
+      queries: [{ query: { case: "userIdQuery", value: { id: subject } } }],
+    });
+    const matches = result.sessions.filter((s) => text(s.metadata[metadataKey]) === operationKey);
+    if (
+      result.details?.totalResult === undefined ||
+      Number(result.details.totalResult) !== result.sessions.length ||
+      result.sessions.length > 100 ||
+      matches.length > 1
+    )
+      throw new WorkforceStoreError("action_provider_pending");
+    const session = matches[0];
+    if (!session) return undefined;
+    const created = providerTimestampMs(session.creationDate),
+      expires = providerTimestampMs(session.expirationDate),
+      verified = providerTimestampMs(session.factors?.user?.verifiedAt);
+    if (
+      session.factors?.user?.id !== subject ||
+      session.factors.user.organizationId !== this.organizationId ||
+      created === undefined ||
+      created > Date.now() ||
+      expires === undefined ||
+      expires <= created ||
+      verified === undefined ||
+      verified < created ||
+      verified > Date.now()
+    )
+      throw new WorkforceStoreError("action_provider_pending");
+    return session;
+  }
 }
 export async function workforceProvider(serviceConfig: ServiceConfig, organizationId: string) {
   return new WorkforceProvider(await createServiceForHost(SessionService, serviceConfig), organizationId);

@@ -1,4 +1,4 @@
-import { create, type Duration } from "@zitadel/client";
+import { Code, create, type Duration } from "@zitadel/client";
 import { RequestChallengesSchema, UserVerificationRequirement } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
 import type { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { ChecksSchema, type Checks } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
@@ -413,6 +413,114 @@ export async function readOperationsAction(request: Request, id: string, family:
         expected: row.binding.expected,
         command: row.binding.command,
         capabilityDecisionId: row.binding.capabilityDecisionId,
+      },
+      { headers: noStore },
+    );
+  } catch {
+    return failure();
+  }
+}
+/** Observe original intent without issuing a challenge, refreshing a credential, or replaying an assertion. */
+export async function observeOperationsAction(request: Request, id: string, family: OperationsActionFamily = "settlement") {
+  try {
+    purpose(request, familyPurpose[family].bff);
+    if (!uuid.test(id)) throw denied();
+    const value = await input(request, ["idToken", "accessToken", "nonce", "clientId", "expected", "command"]);
+    if (
+      !operationsExpected(value.expected, family) ||
+      !operationsCommand(value.command, family) ||
+      !["idToken", "accessToken", "nonce", "clientId"].every((k) => typeof value[k] === "string")
+    )
+      throw denied();
+    const proofs = { idToken: value.idToken, accessToken: value.accessToken, nonce: value.nonce, clientId: value.clientId },
+      store = operationsActionStore();
+    const currentBinding = async () => {
+      const current = await admission(proofs);
+      if (
+        workforceAssertionHash(expected(current, value.expected.action, value.expected.payloadHash, family)) !==
+        workforceAssertionHash(value.expected)
+      )
+        throw denied();
+      return {
+        current,
+        binding: await readOperationsActionAuthority(value.expected, value.command, proofs),
+      };
+    };
+    const initial = await currentBinding(),
+      original = await store.observe(id, initial.binding, initial.current.requestId);
+    let providerRetirement: "not_started" | "pending" | "confirmed" = "not_started",
+      observed: Session | undefined;
+    if (original?.provider_started_at) {
+      providerRetirement = "pending";
+      const { p, serviceConfig } = await providerConfig();
+      if (original.provider_session_id) {
+        try {
+          observed = (await getSession({ serviceConfig, sessionId: original.provider_session_id, sessionToken: "" }))
+            .session;
+          if (!observed) throw denied();
+        } catch (error) {
+          if (!isClassifiedError(error) || error.code !== Code.NotFound) throw error;
+          providerRetirement = "confirmed";
+        }
+      } else {
+        observed = await (
+          await workforceProvider(serviceConfig, p.organizationId)
+        ).inspectActionIntent(id, original.provider_subject, "paypm_operations_action_intent");
+      }
+      if (observed) {
+        const created = providerTimestampMs(observed.creationDate),
+          expires = providerTimestampMs(observed.expirationDate),
+          verified = providerTimestampMs(observed.factors?.user?.verifiedAt);
+        if (
+          (original.provider_session_id && observed.id !== original.provider_session_id) ||
+          observed.factors?.user?.id !== original.provider_subject ||
+          observed.factors.user.organizationId !== p.organizationId ||
+          new TextDecoder().decode(observed.metadata["paypm_operations_action_intent"]) !== id ||
+          created === undefined ||
+          created > Date.now() ||
+          expires === undefined ||
+          expires <= created ||
+          verified === undefined ||
+          verified < created ||
+          verified > Date.now()
+        )
+          throw denied();
+        if (expires <= Date.now()) providerRetirement = "confirmed";
+      }
+    }
+    const final = await currentBinding();
+    if (workforceAssertionHash(initial.binding) !== workforceAssertionHash(final.binding)) throw denied();
+    const row = await store.observe(id, final.binding, final.current.requestId);
+    let state: "not_started" | "pending" | "verified" | "consumed" | "cancelled" | "expired" | "retired" = "not_started";
+    if (row) {
+      const raced =
+        !original ||
+        original.provider_started_at?.getTime() !== row.provider_started_at?.getTime() ||
+        original.provider_session_id !== row.provider_session_id;
+      if (raced) providerRetirement = row.provider_started_at ? "pending" : "not_started";
+      const expired =
+        row.expires_at.getTime() <= Date.now() || (row.receipt_expires_at?.getTime() ?? Infinity) <= Date.now();
+      if (row.consumed_at) state = "consumed";
+      else if (row.state === "cancelled") state = "cancelled";
+      else if (row.state === "retired" || expired)
+        state = providerRetirement === "pending" ? "pending" : expired ? "expired" : "retired";
+      else if (providerRetirement === "confirmed") state = "retired";
+      else if (row.state === "verified" && !raced && observed && providerRetirement === "pending") {
+        if (accepted(observed, row).getTime() !== row.verified_at?.getTime()) throw denied();
+        state = "verified";
+      } else state = row.state === "reserved" && !row.provider_started_at ? "not_started" : "pending";
+    }
+    return Response.json(
+      {
+        requestId: id,
+        state,
+        expected: final.binding.expected,
+        command: final.binding.command,
+        capabilityDecisionId: final.binding.capabilityDecisionId,
+        requestExpiresAt: row?.expires_at.toISOString() ?? null,
+        receiptExpiresAt: row?.receipt_expires_at?.toISOString() ?? null,
+        providerRetirement,
+        checkedAt: new Date().toISOString(),
       },
       { headers: noStore },
     );

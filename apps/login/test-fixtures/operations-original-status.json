@@ -1,0 +1,56 @@
+{
+  "qualification": "synthetic-wire-only-no-live-admission-or-grant",
+  "method": "POST",
+  "path": "/api/internal/v1/operations/actions/requests/00000010-0000-4000-8000-000000000000/status",
+  "request": {
+    "idToken": "synthetic-original-id-token",
+    "accessToken": "synthetic-original-access-token",
+    "nonce": "synthetic-original-oidc-nonce",
+    "clientId": "operations@paypm",
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.merchant.settlement.review",
+      "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    }
+  },
+  "response": {
+    "requestId": "00000010-0000-4000-8000-000000000000",
+    "state": "pending",
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.merchant.settlement.review",
+      "payloadHash": "55f056e44de5c44bdb67b4988afb09c893ba382bf13e390fa76511ee3278aea6"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "merchantBusinessId": "00000006-0000-4000-8000-000000000000",
+      "organizationId": "00000007-0000-4000-8000-000000000000"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "requestExpiresAt": "2026-10-03T18:05:00.000Z",
+    "receiptExpiresAt": null,
+    "providerRetirement": "pending",
+    "checkedAt": "2026-10-03T18:00:00.000Z"
+  }
+}

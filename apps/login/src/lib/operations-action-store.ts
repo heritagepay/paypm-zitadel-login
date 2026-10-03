@@ -195,6 +195,32 @@ export class OperationsActionStore {
       throw new WorkforceStoreError("operations_action_not_active");
     return row;
   }
+  /** Observation retains the original base/epoch even after request material was erased. */
+  async observe(id: string, binding: OperationsActionBinding, requestId: string) {
+    const e = binding.expected;
+    return this.sql.begin(async (tx) => {
+      const [admission] = await tx<
+        { epoch: string }[]
+      >`SELECT a.epoch FROM login_workforce_admissions a JOIN login_workforce_epochs e ON a.issuer=e.issuer AND a.provider_subject=e.provider_subject AND a.epoch=e.epoch WHERE a.provider_session_id=${e.baseSessionId} AND a.issuer=${e.issuer} AND a.provider_subject=${e.providerSubject} AND a.client_id=${e.clientId} AND a.request_id=${requestId} AND a.revoked_at IS NULL AND a.absolute_expires_at>clock_timestamp() AND a.last_seen_at>clock_timestamp()-interval '30 minutes' FOR SHARE OF a,e`;
+      if (!admission) throw new WorkforceStoreError("operations_action_not_active");
+      const rows = await tx<
+        OperationsActionRow[]
+      >`SELECT * FROM login_operations_action_requests WHERE id=${id} OR (operation_key=${binding.command.operationKey} AND binding->'expected'->>'personId'=${e.personId} AND binding->'expected'->>'action'=${e.action})`;
+      const row = rows.find((v) => v.id === id);
+      if (!row) {
+        if (rows.length) throw new WorkforceStoreError("operations_action_conflict");
+        return undefined;
+      }
+      if (
+        row.operation_key !== binding.command.operationKey ||
+        workforceAssertionHash(row.binding) !== workforceAssertionHash(binding) ||
+        row.request_id !== requestId ||
+        row.epoch !== admission.epoch
+      )
+        throw new WorkforceStoreError("operations_action_conflict");
+      return row;
+    });
+  }
   async capability(id: string, value: string, allowCancelled = false) {
     const row = await this.row(id, allowCancelled);
     if (!/^[A-Za-z0-9_-]{43}$/.test(value) || sha(value) !== row.capability_hash)

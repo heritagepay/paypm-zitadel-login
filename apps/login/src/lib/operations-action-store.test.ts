@@ -321,4 +321,66 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
     expect(explicitRestart.id).not.toBe(row.id);
     expect((await store.row(row.id, true)).state).toBe("cancelled");
   });
+  it("original status reads never reserve an absent request or claim its provider creation", async () => {
+    const input = await ready();
+    expect(await store.observe(input.id, input.binding, input.requestId)).toBeUndefined();
+    expect((await sql`SELECT id FROM login_operations_action_requests`).length).toBe(0);
+    await store.reserve(input);
+    expect((await store.observe(input.id, input.binding, input.requestId))?.provider_started_at).toBeNull();
+    expect(await store.claimCreation(input.id)).toBe(true);
+    await expect(store.observe(randomUUID(), input.binding, input.requestId)).rejects.toMatchObject({
+      code: "operations_action_conflict",
+    });
+  });
+  it.each([grantFixture, deploymentGrantFixture])(
+    "a retired family request retains its exact original status without sealed credentials or permission resurrection",
+    async (fixture) => {
+      const input = await ready();
+      input.binding = {
+        expected: {
+          ...input.binding.expected,
+          action: fixture.request.expected.action as OperationsActionBinding["expected"]["action"],
+          payloadHash: fixture.request.expected.payloadHash,
+        },
+        command: fixture.request.command as any,
+        capabilityDecisionId: fixture.request.command.policyId,
+        resource: fixture.response.resource as any,
+      };
+      await store.reserve(input);
+      await store.claimCreation(input.id);
+      await store.retire(input.id);
+      const row = await store.observe(input.id, input.binding, input.requestId);
+      expect(row).toMatchObject({ state: "retired", caller_material_sealed: null, provider_material_sealed: null });
+      expect(row?.provider_started_at).toBeInstanceOf(Date);
+      await expect(store.row(input.id)).rejects.toMatchObject({ code: "operations_action_not_active" });
+      await expect(
+        store.observe(
+          input.id,
+          { ...input.binding, command: { ...input.binding.command, targetPersonId: randomUUID() } as any },
+          input.requestId,
+        ),
+      ).rejects.toMatchObject({ code: "operations_action_conflict" });
+      await base.revoke("5566");
+      await expect(store.observe(input.id, input.binding, input.requestId)).rejects.toMatchObject({
+        code: "operations_action_not_active",
+      });
+    },
+  );
+  it("status cannot change the original OIDC intent/base or survive durable logout", async () => {
+    const { input, row } = await created();
+    await expect(store.observe(row.id, input.binding, "another-oidc-request")).rejects.toMatchObject({
+      code: "operations_action_not_active",
+    });
+    await expect(
+      store.observe(
+        row.id,
+        { ...input.binding, expected: { ...input.binding.expected, baseSessionId: "9999" } },
+        input.requestId,
+      ),
+    ).rejects.toMatchObject({ code: "operations_action_not_active" });
+    await base.revokeUser(input.binding.expected.issuer, input.binding.expected.providerSubject);
+    await expect(store.observe(row.id, input.binding, input.requestId)).rejects.toMatchObject({
+      code: "operations_action_not_active",
+    });
+  });
 });

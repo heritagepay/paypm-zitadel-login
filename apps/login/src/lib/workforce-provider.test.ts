@@ -82,3 +82,53 @@ describe("exact owned provider retirement readback", () => {
     expect(deleteSession).not.toHaveBeenCalled();
   });
 });
+
+describe("pure operation intent inspection", () => {
+  it("reads an exact expired provider session without renewing or deleting it", async () => {
+    const record = session();
+    record.expirationDate = timestamp(Date.now() - 1000);
+    const listSessions = vi.fn(async () => ({ sessions: [record], details: { totalResult: BigInt(1) } })),
+      deleteSession = vi.fn(),
+      setSession = vi.fn(),
+      createSession = vi.fn();
+    expect(
+      await new WorkforceProvider(
+        { listSessions, deleteSession, setSession, createSession } as any,
+        "300",
+      ).inspectActionIntent(operationKey, "700", "paypm_workforce_action_intent"),
+    ).toEqual(record);
+    expect(deleteSession).not.toHaveBeenCalled();
+    expect(setSession).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+  });
+  it("a complete empty result is merely absent, leaving creation-outcome interpretation to its original journal", async () => {
+    const api = { listSessions: vi.fn(async () => ({ sessions: [], details: { totalResult: BigInt(0) } })) };
+    expect(
+      await new WorkforceProvider(api as any, "300").inspectActionIntent(
+        operationKey,
+        "700",
+        "paypm_workforce_action_intent",
+      ),
+    ).toBeUndefined();
+  });
+  it.each(["duplicate", "missing-count", "incomplete", "wrong-subject", "wrong-organization", "missing-expiry"])(
+    "rejects %s without inventing retirement",
+    async (kind) => {
+      const record = session();
+      if (kind === "wrong-subject") record.factors.user.id = "999";
+      if (kind === "wrong-organization") record.factors.user.organizationId = "999";
+      if (kind === "missing-expiry") (record as any).expirationDate = undefined;
+      const sessions = kind === "duplicate" ? [record, { ...record, id: "second" }] : [record];
+      const api = {
+        listSessions: vi.fn(async () => ({
+          sessions,
+          details:
+            kind === "missing-count" ? undefined : { totalResult: BigInt(kind === "incomplete" ? 2 : sessions.length) },
+        })),
+      };
+      await expect(
+        new WorkforceProvider(api as any, "300").inspectActionIntent(operationKey, "700", "paypm_workforce_action_intent"),
+      ).rejects.toMatchObject({ code: "action_provider_pending" });
+    },
+  );
+});
