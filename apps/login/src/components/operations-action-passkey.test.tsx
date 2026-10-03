@@ -54,6 +54,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("Operations action passkey experience", () => {
+  it.each(["en", "fr"])(
+    "describes deployment read-access approval in %s without company or financial wording",
+    async (locale) => {
+      const copy = locale === "fr" ? fr : en;
+      fetcher.mockImplementation(async (url: string) =>
+        Response.json(
+          url.endsWith("/challenge")
+            ? { ...flow(), action: "operations.access.deployment-grant.approve" }
+            : { callbackUrl: callback },
+        ),
+      );
+      mount(locale);
+      await screen.findByRole("button", { name: copy.operationsAction.verify });
+      expect(screen.getByText(copy.operationsAction.actions.deploymentGrantApprove)).toBeInTheDocument();
+      expect(screen.queryByText(copy.operationsAction.actions.grantApprove)).not.toBeInTheDocument();
+      expect(screen.queryByText(copy.operationsAction.actions.approve)).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
+    },
+  );
   it.each(["en", "fr"])("describes governed access actions truthfully in %s with no automatic prompt", async (locale) => {
     const copy = locale === "fr" ? fr : en;
     fetcher.mockImplementation(async (url: string) =>

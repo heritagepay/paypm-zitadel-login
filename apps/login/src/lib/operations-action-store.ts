@@ -20,7 +20,10 @@ export type OperationsActionExpected = {
     | "operations.merchant.settlement.execute"
     | "operations.access.grant.review"
     | "operations.access.grant.approve"
-    | "operations.access.grant.revoke";
+    | "operations.access.grant.revoke"
+    | "operations.access.deployment-grant.review"
+    | "operations.access.deployment-grant.approve"
+    | "operations.access.deployment-grant.revoke";
   payloadHash: string;
 };
 export type OperationsSettlementCommand = { operationKey: string; merchantBusinessId: string; organizationId: string };
@@ -36,15 +39,36 @@ export type OperationsGrantCommand = OperationsSettlementCommand & {
   expiresAt: string;
   reason: string;
 };
-export type OperationsActionCommand = OperationsSettlementCommand | OperationsGrantCommand;
+export type OperationsDeploymentGrantCommand = {
+  operationKey: string;
+  policyId: string;
+  targetPersonId: string;
+  targetAuthentication: { issuer: string; subject: string };
+  capability: "operations.transactions.read" | "operations.kyc.read" | "operations.audit.read";
+  expiresAt: string;
+  reason: string;
+};
+export type OperationsActionCommand =
+  | OperationsSettlementCommand
+  | OperationsGrantCommand
+  | OperationsDeploymentGrantCommand;
 export type OperationsGrantResource = Omit<OperationsGrantCommand, "operationKey" | "expiresAt" | "reason"> & {
+  policyHash: string;
+};
+export type OperationsDeploymentGrantResource = Omit<
+  OperationsDeploymentGrantCommand,
+  "operationKey" | "expiresAt" | "reason"
+> & {
   policyHash: string;
 };
 export type OperationsActionBinding = {
   expected: OperationsActionExpected;
   command: OperationsActionCommand;
   capabilityDecisionId: string;
-  resource: { merchantBusinessId: string; organizationId: string; currency: string } | OperationsGrantResource;
+  resource:
+    | { merchantBusinessId: string; organizationId: string; currency: string }
+    | OperationsGrantResource
+    | OperationsDeploymentGrantResource;
 };
 export type OperationsCallerMaterial = {
   idToken: string;

@@ -90,6 +90,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("separate Operations current admission boundary", () => {
+  it.each([
+    "PAYPM_OPERATIONS_ACTION_BFF_TOKEN",
+    "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN",
+    "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN",
+    "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN",
+    "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_AUTHORITY_API_KEY",
+    "PAYPM_OPERATIONS_LOGOUT_TOKEN",
+  ])("denies %s secret reuse before validating actor proofs", async (name) => {
+    vi.stubEnv(name, process.env.PAYPM_OPERATIONS_ADMISSION_READER_TOKEN!);
+    expect((await call()).status).toBe(403);
+    expect(verifyOperationsOidcProof).not.toHaveBeenCalled();
+  });
   it("returns the exact 22-field tuple with canonical Person and no product grants", async () => {
     const response = await call();
     expect(response.status).toBe(200);

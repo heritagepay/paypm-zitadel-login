@@ -40,7 +40,9 @@ function purpose(
     | "PAYPM_OPERATIONS_ACTION_BFF_TOKEN"
     | "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN"
     | "PAYPM_OPERATIONS_GRANT_BFF_TOKEN"
-    | "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN",
+    | "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN"
+    | "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN"
+    | "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN",
 ) {
   const secret = process.env[name];
   if (
@@ -51,6 +53,8 @@ function purpose(
       "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN",
       "PAYPM_OPERATIONS_GRANT_BFF_TOKEN",
       "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN",
+      "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN",
+      "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN",
       "PAYPM_OPERATIONS_ADMISSION_READER_TOKEN",
       "PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET",
       "PAYPM_WORKFORCE_ADMISSION_READER_TOKEN",
@@ -60,6 +64,7 @@ function purpose(
       "PAYPM_LEGACY_MIGRATION_FLOW_KEY_BASE64",
       "PAYPM_OPERATIONS_ACTION_AUTHORITY_API_KEY",
       "PAYPM_OPERATIONS_GRANT_AUTHORITY_API_KEY",
+      "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_AUTHORITY_API_KEY",
       "PAYPM_OPERATIONS_LOGOUT_TOKEN",
       "PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64",
       "PAYPM_OPERATIONS_STORE_KEY_BASE64",
@@ -72,6 +77,14 @@ function purpose(
     expected = Buffer.from(`Bearer ${secret}`);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw denied();
 }
+const familyPurpose = {
+  settlement: { bff: "PAYPM_OPERATIONS_ACTION_BFF_TOKEN", consumer: "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN" },
+  grant: { bff: "PAYPM_OPERATIONS_GRANT_BFF_TOKEN", consumer: "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN" },
+  "deployment-grant": {
+    bff: "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN",
+    consumer: "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN",
+  },
+} as const;
 async function input(request: Request, keys: string[]) {
   const raw = await request.text();
   if (Buffer.byteLength(raw) > 32768) throw denied();
@@ -271,7 +284,7 @@ function receiptResponse(row: OperationsActionRow) {
 }
 export async function startOperationsAction(request: Request, family: OperationsActionFamily = "settlement") {
   try {
-    purpose(request, family === "grant" ? "PAYPM_OPERATIONS_GRANT_BFF_TOKEN" : "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
+    purpose(request, familyPurpose[family].bff);
     const value = await input(request, [
       "requestId",
       "idToken",
@@ -362,7 +375,7 @@ export async function startOperationsAction(request: Request, family: Operations
 }
 export async function readOperationsAction(request: Request, id: string, family: OperationsActionFamily = "settlement") {
   try {
-    purpose(request, family === "grant" ? "PAYPM_OPERATIONS_GRANT_BFF_TOKEN" : "PAYPM_OPERATIONS_ACTION_BFF_TOKEN");
+    purpose(request, familyPurpose[family].bff);
     if (!uuid.test(id)) throw denied();
     const value = await input(request, ["expected", "command"]);
     if (!operationsExpected(value.expected, family) || !operationsCommand(value.command, family)) throw denied();
@@ -492,10 +505,7 @@ export async function consumeOperationsAction(
   family: OperationsActionFamily = "settlement",
 ) {
   try {
-    purpose(
-      request,
-      family === "grant" ? "PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN" : "PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN",
-    );
+    purpose(request, familyPurpose[family].consumer);
     const value = await input(request, ["receipt", "expected", "command"]);
     if (
       typeof value.receipt !== "string" ||

@@ -63,6 +63,18 @@ export async function readOperationsAdmission(request: Request): Promise<Respons
         process.env.PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET,
         process.env.PAYPM_WORKFORCE_FLOW_KEY_BASE64,
         process.env.PAYPM_WORKFORCE_STORE_KEY_BASE64,
+        process.env.PAYPM_OPERATIONS_ACTION_BFF_TOKEN,
+        process.env.PAYPM_OPERATIONS_ACTION_CONSUMER_TOKEN,
+        process.env.PAYPM_OPERATIONS_GRANT_BFF_TOKEN,
+        process.env.PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN,
+        process.env.PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN,
+        process.env.PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN,
+        process.env.PAYPM_OPERATIONS_ACTION_AUTHORITY_API_KEY,
+        process.env.PAYPM_OPERATIONS_GRANT_AUTHORITY_API_KEY,
+        process.env.PAYPM_OPERATIONS_DEPLOYMENT_GRANT_AUTHORITY_API_KEY,
+        process.env.PAYPM_OPERATIONS_LOGOUT_TOKEN,
+        process.env.PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64,
+        process.env.PAYPM_OPERATIONS_STORE_KEY_BASE64,
       ].includes(secret)
     )
       return deny();

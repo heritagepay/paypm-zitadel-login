@@ -1,0 +1,202 @@
+{
+  "fixtureOnly": true,
+  "frozenDate": "2026-10-03T12:00:02.000Z",
+  "ownerPolicy": {
+    "policyId": "00000005-0000-4000-8000-000000000000",
+    "enabled": true,
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "ownerPersonIds": [
+      "00000001-0000-4000-8000-000000000000",
+      "00000002-0000-4000-8000-000000000000"
+    ],
+    "capabilities": [
+      "operations.transactions.read",
+      "operations.kyc.read",
+      "operations.audit.read"
+    ],
+    "maxGrantSeconds": 86400
+  },
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.deployment-grant.review",
+      "payloadHash": "9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    }
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.deployment-grant.review",
+    "payloadHash": "9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "7d31adc45dcd032d7032e0f0c836c0a16bfaa4f344a79f031db756ed84bc0e3a",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read"
+    }
+  },
+  "preparation": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.deployment-grant.review",
+      "payloadHash": "9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "7d31adc45dcd032d7032e0f0c836c0a16bfaa4f344a79f031db756ed84bc0e3a",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read"
+    },
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000"
+  },
+  "proofResponse": {
+    "proofId": "00000009-0000-4000-8000-000000000000",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.deployment-grant.review",
+    "payloadHash": "9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "7d31adc45dcd032d7032e0f0c836c0a16bfaa4f344a79f031db756ed84bc0e3a",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read"
+    },
+    "proofSessionId": "523456789012345678",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:01.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  },
+  "receipt": "paypm-ops1.ggggggggggggggggggggggggggggggggggggggggggg",
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.access.deployment-grant.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "7d31adc45dcd032d7032e0f0c836c0a16bfaa4f344a79f031db756ed84bc0e3a",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.transactions.read"
+    },
+    "idempotencyKey": "00000008-0000-4000-8000-000000000000",
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read settlement evidence for the registered organization"
+    }
+  },
+  "hmac": {
+    "path": "/api/v1/internal/operations/authority/deployment-grants/actions/current",
+    "rawJSON": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.deployment-grant.review\",\"payloadHash\":\"9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.transactions.read\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read settlement evidence for the registered organization\"}}",
+    "signedBytes": "1791028802.00000010-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/deployment-grants/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.deployment-grant.review\",\"payloadHash\":\"9cdcf770a8c3b279621902c4ae81602f3a2cab2612c9317fe9589e3b291fc186\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.transactions.read\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read settlement evidence for the registered organization\"}}",
+    "fixtureSecret": "fixture-only-operations-grant-reader-hmac-not-a-live-secret",
+    "header": "t=1791028802,n=00000010-0000-4000-8000-000000000000,v2=61e82806d4859c9517e17346bd85041e46220c79c5b2680611014399dca09608"
+  }
+}

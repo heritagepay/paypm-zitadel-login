@@ -496,7 +496,10 @@
       "execute": "Execute an approved merchant settlement",
       "grantReview": "Review an Operations access grant",
       "grantApprove": "Approve an Operations access grant",
-      "grantRevoke": "Revoke an Operations access grant"
+      "grantRevoke": "Revoke an Operations access grant",
+      "deploymentGrantReview": "Review read access for this deployment",
+      "deploymentGrantApprove": "Approve read access for this deployment",
+      "deploymentGrantRevoke": "Revoke read access for this deployment"
     }
   }
 }

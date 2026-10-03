@@ -60,6 +60,9 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
           "operations.access.grant.review",
           "operations.access.grant.approve",
           "operations.access.grant.revoke",
+          "operations.access.deployment-grant.review",
+          "operations.access.deployment-grant.approve",
+          "operations.access.deployment-grant.revoke",
         ].includes(value.action) ||
         !value.publicKey ||
         value.publicKey.userVerification !== "required" ||
@@ -175,9 +178,14 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
       setCancelling(false);
     }
   }
-  const action = flow?.action.startsWith("operations.access.grant.")
-    ? "grant" +
-      flow.action
+  const grantPrefix = flow?.action.startsWith("operations.access.deployment-grant.")
+    ? "deploymentGrant"
+    : flow?.action.startsWith("operations.access.grant.")
+      ? "grant"
+      : undefined;
+  const action = grantPrefix
+    ? grantPrefix +
+      flow!.action
         .split(".")
         .at(-1)!
         .replace(/^./, (letter) => letter.toUpperCase())

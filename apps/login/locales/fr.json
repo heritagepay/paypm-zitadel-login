@@ -460,7 +460,10 @@
       "execute": "Exécuter un règlement marchand approuvé",
       "grantReview": "Examiner un accès aux Opérations",
       "grantApprove": "Approuver un accès aux Opérations",
-      "grantRevoke": "Révoquer un accès aux Opérations"
+      "grantRevoke": "Révoquer un accès aux Opérations",
+      "deploymentGrantReview": "Examiner un accès en lecture à ce déploiement",
+      "deploymentGrantApprove": "Approuver un accès en lecture à ce déploiement",
+      "deploymentGrantRevoke": "Révoquer un accès en lecture à ce déploiement"
     }
   }
 }
