@@ -1,0 +1,198 @@
+{
+  "fixtureOnly": true,
+  "frozenDate": "2026-10-03T12:00:02.000Z",
+  "ownerPolicy": {
+    "policyId": "00000005-0000-4000-8000-000000000000",
+    "enabled": true,
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "ownerPersonIds": [
+      "00000001-0000-4000-8000-000000000000",
+      "00000002-0000-4000-8000-000000000000"
+    ],
+    "capabilities": ["operations.contract-vault.read"],
+    "maxGrantSeconds": 86400
+  },
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.deployment-grant.review",
+      "payloadHash": "c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    }
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.deployment-grant.review",
+    "payloadHash": "c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "4661bea4fc303dfa6bdc223ce02b922f388a6007c17046bbf879b1841bfde5e8",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read"
+    }
+  },
+  "preparation": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.deployment-grant.review",
+      "payloadHash": "c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    },
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "4661bea4fc303dfa6bdc223ce02b922f388a6007c17046bbf879b1841bfde5e8",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read"
+    },
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000"
+  },
+  "proofResponse": {
+    "proofId": "00000009-0000-4000-8000-000000000000",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.deployment-grant.review",
+    "payloadHash": "c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "4661bea4fc303dfa6bdc223ce02b922f388a6007c17046bbf879b1841bfde5e8",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read"
+    },
+    "proofSessionId": "523456789012345678",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:01.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  },
+  "receipt": "paypm-ops1.ggggggggggggggggggggggggggggggggggggggggggg",
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.access.deployment-grant.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "4661bea4fc303dfa6bdc223ce02b922f388a6007c17046bbf879b1841bfde5e8",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.contract-vault.read"
+    },
+    "idempotencyKey": "00000008-0000-4000-8000-000000000000",
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Read exact registered Contract Vault owner evidence"
+    }
+  },
+  "hmac": {
+    "path": "/api/v1/internal/operations/authority/deployment-grants/actions/current",
+    "rawJSON": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.deployment-grant.review\",\"payloadHash\":\"c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.contract-vault.read\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read exact registered Contract Vault owner evidence\"}}",
+    "signedBytes": "1791028802.00000010-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/deployment-grants/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.deployment-grant.review\",\"payloadHash\":\"c3d49fb898d5e2ecdde768954da1f28976657e4af08b0646e7d8ae7e22a94398\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.contract-vault.read\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Read exact registered Contract Vault owner evidence\"}}",
+    "fixtureSecret": "fixture-only-operations-grant-reader-hmac-not-a-live-secret",
+    "header": "t=1791028802,n=00000010-0000-4000-8000-000000000000,v2=0cd1eb8bdb9234163887c0eef5e072a9456ed6d3f00d556a41305ac6c5748eb6"
+  }
+}

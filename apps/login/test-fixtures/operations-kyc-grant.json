@@ -1,0 +1,201 @@
+{
+  "fixtureOnly": true,
+  "frozenDate": "2026-10-03T12:00:02.000Z",
+  "ownerPolicy": {
+    "policyId": "00000005-0000-4000-8000-000000000000",
+    "enabled": true,
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "ownerPersonIds": [
+      "00000001-0000-4000-8000-000000000000",
+      "00000002-0000-4000-8000-000000000000"
+    ],
+    "capabilities": [
+      "operations.kyc.review",
+      "operations.kyc.decide"
+    ],
+    "maxGrantSeconds": 86400
+  },
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.kyc-grant.review",
+      "payloadHash": "db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    }
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.kyc-grant.review",
+    "payloadHash": "db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "291f831da60c797ce9afd4c40745db84bbec63bcefd11489eb454d809d8a97ac",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review"
+    }
+  },
+  "preparation": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.access.kyc-grant.review",
+      "payloadHash": "db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5"
+    },
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    },
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "291f831da60c797ce9afd4c40745db84bbec63bcefd11489eb454d809d8a97ac",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review"
+    },
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000"
+  },
+  "proofResponse": {
+    "proofId": "00000009-0000-4000-8000-000000000000",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.access.kyc-grant.review",
+    "payloadHash": "db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5",
+    "command": {
+      "operationKey": "00000008-0000-4000-8000-000000000000",
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review",
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    },
+    "capabilityDecisionId": "00000005-0000-4000-8000-000000000000",
+    "resource": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "291f831da60c797ce9afd4c40745db84bbec63bcefd11489eb454d809d8a97ac",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review"
+    },
+    "proofSessionId": "523456789012345678",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:01.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  },
+  "receipt": "paypm-ops1.ggggggggggggggggggggggggggggggggggggggggggg",
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.access.kyc-grant.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "policyId": "00000005-0000-4000-8000-000000000000",
+      "policyHash": "291f831da60c797ce9afd4c40745db84bbec63bcefd11489eb454d809d8a97ac",
+      "targetPersonId": "00000003-0000-4000-8000-000000000000",
+      "targetAuthentication": {
+        "issuer": "https://auth.paypm.test",
+        "subject": "423456789012345678"
+      },
+      "capability": "operations.kyc.review"
+    },
+    "idempotencyKey": "00000008-0000-4000-8000-000000000000",
+    "input": {
+      "expiresAt": "2026-10-03T13:00:00.000Z",
+      "reason": "Review the separately registered KYC authority"
+    }
+  },
+  "hmac": {
+    "path": "/api/v1/internal/operations/authority/kyc-grants/actions/current",
+    "rawJSON": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.kyc-grant.review\",\"payloadHash\":\"db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.kyc.review\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Review the separately registered KYC authority\"}}",
+    "signedBytes": "1791028802.00000010-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/kyc-grants/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.access.kyc-grant.review\",\"payloadHash\":\"db1584105a1224d5ece1ac1d400208d0e8d096c986b27feb74c2e16eb54784d5\"},\"command\":{\"operationKey\":\"00000008-0000-4000-8000-000000000000\",\"policyId\":\"00000005-0000-4000-8000-000000000000\",\"targetPersonId\":\"00000003-0000-4000-8000-000000000000\",\"targetAuthentication\":{\"issuer\":\"https://auth.paypm.test\",\"subject\":\"423456789012345678\"},\"capability\":\"operations.kyc.review\",\"expiresAt\":\"2026-10-03T13:00:00.000Z\",\"reason\":\"Review the separately registered KYC authority\"}}",
+    "fixtureSecret": "fixture-only-operations-kyc-grant-reader-not-live",
+    "header": "t=1791028802,n=00000010-0000-4000-8000-000000000000,v2=7a34d6ca5c2a7208af38b4c254272d7d9d6546a1766b87df91f46ac64de26c6f"
+  }
+}

@@ -170,11 +170,9 @@ export async function getLoginSettings({
       .then((resp) => (resp.settings ? resp.settings : undefined));
   };
 
-  return freshCache(
-    instanceCacheKey(serviceConfig, `getLoginSettings-${organization || "instance"}`),
-    fetcher,
-    getTTLForKey("getLoginSettings", defaultCacheTTL),
-  );
+  // Login policy is an authority decision. Fetch current settings; the shared
+  // presentation cache can otherwise retain a revoked policy for 15 minutes.
+  return fetcher();
 }
 
 export async function getSecuritySettings({ serviceConfig }: WithServiceConfig) {
@@ -313,16 +311,23 @@ export async function createSessionFromChecksAndChallenges({
   checks,
   challenges,
   lifetime,
+  metadata,
+  timeoutMs,
 }: WithServiceConfig<{
   checks: Checks;
   challenges?: RequestChallenges;
   lifetime: Duration;
+  metadata?: Record<string, Uint8Array>;
+  timeoutMs?: number;
 }>) {
   const sessionService: Client<typeof SessionService> = await createServiceForHost(SessionService, serviceConfig);
 
   const userAgent = await getUserAgent();
 
-  return sessionService.createSession({ ...{ checks, lifetime, userAgent }, ...(challenges ? { challenges } : {}) }, {});
+  return sessionService.createSession(
+    { ...{ checks, lifetime, userAgent }, ...(challenges ? { challenges } : {}), ...(metadata ? { metadata } : {}) },
+    timeoutMs === undefined ? {} : { timeoutMs: Math.min(10000, Math.max(1000, timeoutMs)) },
+  );
 }
 
 export async function createSessionForUserIdAndIdpIntent({
@@ -364,12 +369,14 @@ export async function setSession({
   challenges,
   checks,
   lifetime,
+  metadata,
 }: WithServiceConfig<{
   sessionId: string;
   sessionToken: string;
   challenges: RequestChallenges | undefined;
   checks?: Checks;
   lifetime: Duration;
+  metadata?: Record<string, Uint8Array>;
 }>) {
   const sessionService: Client<typeof SessionService> = await createServiceForHost(SessionService, serviceConfig);
 
@@ -379,7 +386,7 @@ export async function setSession({
       sessionToken,
       challenges,
       checks: checks ? checks : {},
-      metadata: {},
+      metadata: metadata ?? {},
       lifetime,
     },
     {},

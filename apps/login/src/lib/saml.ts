@@ -32,7 +32,8 @@ export async function loginWithSAMLAndSession({
   if (selectedSession && selectedSession.id) {
     const isValid = await isSessionValid({ serviceConfig, session: selectedSession });
 
-    if (!isValid && selectedSession.factors?.user) {
+    if (!isValid) {
+      if (!selectedSession.factors?.user) return { error: "Session not found or invalid" };
       // if the session is not valid anymore, we need to redirect the user to re-authenticate /
       // TODO: handle IDP intent direcly if available
       const command: SendLoginnameCommand = {
@@ -50,6 +51,7 @@ export async function loginWithSAMLAndSession({
       if (res && "samlData" in res && res?.samlData) {
         return { samlData: res.samlData };
       }
+      return { error: "Session not found or invalid" };
     }
 
     const cookie = sessionCookies.find((cookie) => cookie.id === selectedSession?.id);

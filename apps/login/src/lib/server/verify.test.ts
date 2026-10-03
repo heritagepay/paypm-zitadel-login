@@ -3,6 +3,8 @@ import { initialSendVerification, sendVerification } from "./verify";
 
 import {
   createInviteCode,
+  createPasskeyRegistrationLink,
+  getLoginSettings,
   getSession,
   getUserByID,
   listAuthenticationMethodTypes,
@@ -23,6 +25,7 @@ vi.mock("@/lib/zitadel", () => ({
   getLoginSettings: vi.fn(),
   sendEmailCode: vi.fn(),
   createInviteCode: vi.fn(),
+  createPasskeyRegistrationLink: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -64,6 +67,9 @@ describe("sendVerification", () => {
   let mockCookies: any;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("PAYPM_LOGIN_ENROLLMENT_KEY_BASE64", Buffer.alloc(32, 3).toString("base64"));
+    vi.mocked(getLoginSettings).mockResolvedValue({ allowLocalAuthentication: true } as any);
     mockVerifyEmail = verifyEmail;
     mockGetUserByID = getUserByID;
     mockGetSession = getSession;
@@ -72,6 +78,9 @@ describe("sendVerification", () => {
     mockCreateSessionAndUpdateCookie = createSessionAndUpdateCookie;
     mockCookies = cookies;
 
+    vi.mocked(createPasskeyRegistrationLink).mockResolvedValue({
+      code: { id: "provider-code-id", code: "provider-registration-proof" },
+    } as any);
     // Default valid checking setup
     mockVerifyEmail.mockResolvedValue({});
     mockGetUserByID.mockResolvedValue({
@@ -80,6 +89,41 @@ describe("sendVerification", () => {
     mockCookies.mockResolvedValue({
       set: vi.fn(),
     });
+  });
+
+  test("does not create credential proof when provider login policy is unavailable", async () => {
+    vi.mocked(getLoginSettings).mockResolvedValue(undefined);
+    const result = await sendVerification({ userId: "user-1", code: "123456", isInvite: false });
+    expect(result).toEqual({ error: "errors.couldNotVerify" });
+    expect(createPasskeyRegistrationLink).not.toHaveBeenCalled();
+    expect(createSessionAndUpdateCookie).not.toHaveBeenCalled();
+  });
+
+  test("replaces a cookie session for another identity with exact verified user admission", async () => {
+    mockGetSessionCookieByLoginName.mockResolvedValue({ id: "wrong-user-session", token: "cookie-token" });
+    mockGetSession.mockResolvedValue({ session: { id: "wrong-user-session", factors: { user: { id: "other-user" } } } });
+    mockListAuthenticationMethodTypes.mockResolvedValue({ authMethodTypes: [] });
+    mockCreateSessionAndUpdateCookie.mockResolvedValue({
+      session: { id: "verified-user-session", factors: { user: { id: "user-1", loginName: "test@example.com" } } },
+    });
+    const result = await sendVerification({ userId: "user-1", code: "123456", isInvite: false });
+    expect(mockCreateSessionAndUpdateCookie).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checks: expect.objectContaining({ user: expect.objectContaining({ search: { case: "userId", value: "user-1" } }) }),
+      }),
+    );
+    expect(result).toEqual({ redirect: "/passkey/set?sessionId=verified-user-session&loginName=test%40example.com" });
+  });
+
+  test("rejects provider session creation that returns a different user", async () => {
+    mockGetSessionCookieByLoginName.mockResolvedValue(undefined);
+    mockListAuthenticationMethodTypes.mockResolvedValue({ authMethodTypes: [] });
+    mockCreateSessionAndUpdateCookie.mockResolvedValue({
+      session: { id: "wrong-session", factors: { user: { id: "other" } } },
+    });
+    const result = await sendVerification({ userId: "user-1", code: "123456", isInvite: false });
+    expect(result).toEqual({ error: "errors.couldNotCreateSession" });
+    expect(createPasskeyRegistrationLink).not.toHaveBeenCalled();
   });
 
   test("should handle failing getSession when no auth methods exist (stale cookie scenario)", async () => {
@@ -115,7 +159,7 @@ describe("sendVerification", () => {
 
     // Expect redirect to authenticator setup
     expect(result).toEqual({
-      redirect: "/authenticator/set?sessionId=new-session-id&loginName=test%40example.com",
+      redirect: "/passkey/set?sessionId=new-session-id&loginName=test%40example.com",
     });
 
     // Verify getSession was called (and failed, but we recovered)
@@ -150,13 +194,15 @@ describe("sendVerification", () => {
 
     // Expect redirect to include requestId
     expect(result).toEqual({
-      redirect: expect.stringContaining("/authenticator/set?"),
+      redirect: expect.stringContaining("/passkey/set?"),
     });
     const redirectUrl = (result as { redirect: string }).redirect;
     const params = new URLSearchParams(redirectUrl.split("?")[1]);
     expect(params.get("requestId")).toBe("oidc_auth-req-123");
     expect(params.get("sessionId")).toBe("new-session-id");
     expect(params.get("loginName")).toBe("test@example.com");
+    expect(params.get("code")).toBeNull();
+    expect(params.get("codeId")).toBeNull();
   });
 
   test("should NOT include requestId in /authenticator/set redirect when not provided", async () => {
@@ -237,7 +283,7 @@ describe("initialSendVerification", () => {
 
   afterEach(() => {
     if (originalBasePath === undefined) {
-      delete process.env.NEXT_PUBLIC_BASE_PATH;
+      process.env.NEXT_PUBLIC_BASE_PATH = "";
     } else {
       process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
     }

@@ -554,4 +554,13 @@ describe("changePassword", () => {
     expect(result).toEqual({ error: "errors.couldNotSendResetLink" });
     expect(mockSetUserPassword).not.toHaveBeenCalled();
   });
+  test("account discovery and the former verification cookie cannot set an initial password", async () => {
+    mockGetUserByID.mockResolvedValue({ user: { userId: "new-user", state: 1 } });
+    const { checkUserVerification } = await import("../verify-helper");
+    vi.mocked(checkUserVerification).mockResolvedValue(true);
+    expect(await changePassword({ userId: "new-user", password: "not-logged-fixture" })).toEqual({
+      error: "errors.codeOrVerificationRequired",
+    });
+    expect(mockSetUserPassword).not.toHaveBeenCalled();
+  });
 });

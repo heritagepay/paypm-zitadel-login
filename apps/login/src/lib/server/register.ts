@@ -5,14 +5,13 @@ import { addHumanUser, addIDPLink, getLoginSettings, getUserByID, listAuthentica
 import { Code, ConnectError, Duration, create } from "@zitadel/client";
 import { Factors } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { Checks, ChecksJson, ChecksSchema } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
-import crypto from "crypto";
 import { getTranslations } from "next-intl/server";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { completeFlowOrGetUrl } from "../client";
-import { getOrSetFingerprintId } from "../fingerprint";
 import { createLogger } from "../logger";
 import { getServiceConfig } from "../service-url";
 import { checkEmailVerification, checkMFAFactors } from "../verify-helper";
+import { workforceSelfRegistrationDenied } from "../workforce-policy";
 
 const logger = createLogger("register");
 
@@ -65,6 +64,9 @@ export async function registerUser(
   const t = await getTranslations("register");
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
+
+  if (await workforceSelfRegistrationDenied(serviceConfig, command.organization, command.requestId))
+    return { error: t("errors.registerNotAllowed") };
 
   const loginSettings = await getLoginSettings({ serviceConfig, organization: command.organization });
 
@@ -121,28 +123,17 @@ export async function registerUser(
     const params = new URLSearchParams({
       loginName: session.factors.user.loginName,
       organization: session.factors.user.organizationId,
+      userId: session.factors.user.id,
+      send: "true",
     });
 
     if (command.requestId) {
       params.append("requestId", command.requestId);
     }
 
-    // Set verification cookie for users registering with passkey (no password)
-    // This allows them to proceed with passkey registration without additional verification
-    const cookiesList = await cookies();
-    const userAgentId = await getOrSetFingerprintId();
-
-    const verificationCheck = crypto.createHash("sha256").update(`${session.factors.user.id}:${userAgentId}`).digest("hex");
-
-    await cookiesList.set({
-      name: "verificationCheck",
-      value: verificationCheck,
-      httpOnly: true,
-      path: "/",
-      maxAge: 300, // 5 minutes
-    });
-
-    return { redirect: "/passkey/set?" + params };
+    // Account discovery is not contact ownership. The provider must verify the
+    // contact before issuing any initial credential registration proof.
+    return { redirect: "/verify?" + params };
   } else {
     const userResponse = await getUserByID({ serviceConfig, userId: session?.factors?.user?.id });
 
@@ -206,6 +197,9 @@ export async function registerUserAndLinkToIDP(
 
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
+
+  if (await workforceSelfRegistrationDenied(serviceConfig, command.organization, command.requestId))
+    return { error: t("errors.registerNotAllowed") };
 
   const loginSettings = await getLoginSettings({ serviceConfig, organization: command.organization });
 

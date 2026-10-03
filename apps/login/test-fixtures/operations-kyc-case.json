@@ -1,0 +1,175 @@
+{
+  "frozenDate": "2026-10-03T12:00:10.000Z",
+  "snapshot": {
+    "id": "00000011-0000-4000-8000-000000000000",
+    "userId": "00000013-0000-4000-8000-000000000000",
+    "businessEntityId": "heritagepay",
+    "level": "tier1",
+    "status": "documents_required",
+    "decision": null,
+    "reasons": [],
+    "expiresAt": null,
+    "updatedAt": "2026-10-03T12:00:00.000Z",
+    "documents": [
+      {
+        "id": "00000014-0000-4000-8000-000000000000",
+        "documentId": "00000017-0000-4000-8000-000000000000",
+        "kind": "id_front",
+        "submittedAt": "2026-10-03T12:00:00.000Z"
+      }
+    ]
+  },
+  "request": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.kyc.review",
+      "payloadHash": "5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373"
+    },
+    "command": {
+      "operationKey": "00000015-0000-4000-8000-000000000000",
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "decision": "manual_review",
+      "reasons": ["documents_checked"],
+      "reviewOperationKey": null
+    }
+  },
+  "canonicalMaterial": {
+    "version": 1,
+    "action": "operations.kyc.review",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "target": {
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "walletEndUserId": "00000013-0000-4000-8000-000000000000",
+      "affectedPersonId": "00000012-0000-4000-8000-000000000000",
+      "level": "tier1",
+      "stateHash": "570ed6c9c9d58e7a8a107f34145c6b5308bfe1b477d222606c7fc3d7047f22d2",
+      "reviewOperationKey": null
+    },
+    "idempotencyKey": "00000015-0000-4000-8000-000000000000",
+    "input": {
+      "decision": "manual_review",
+      "reasons": ["documents_checked"]
+    }
+  },
+  "preparation": {
+    "expected": {
+      "personId": "00000001-0000-4000-8000-000000000000",
+      "appId": "paypm-operations",
+      "deploymentId": "heritagepay",
+      "environment": "sandbox",
+      "contextId": "323456789012345678",
+      "issuer": "https://auth.paypm.test",
+      "providerSubject": "123456789012345678",
+      "baseSessionId": "223456789012345678",
+      "clientId": "operations@paypm",
+      "action": "operations.kyc.review",
+      "payloadHash": "5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373"
+    },
+    "command": {
+      "operationKey": "00000015-0000-4000-8000-000000000000",
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "decision": "manual_review",
+      "reasons": ["documents_checked"],
+      "reviewOperationKey": null
+    },
+    "target": {
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "walletEndUserId": "00000013-0000-4000-8000-000000000000",
+      "affectedPersonId": "00000012-0000-4000-8000-000000000000",
+      "level": "tier1",
+      "stateHash": "570ed6c9c9d58e7a8a107f34145c6b5308bfe1b477d222606c7fc3d7047f22d2",
+      "reviewOperationKey": null
+    },
+    "input": {
+      "decision": "manual_review",
+      "reasons": ["documents_checked"]
+    },
+    "capabilityDecisionId": "00000016-0000-4000-8000-000000000000",
+    "semanticHash": "d10e9ea3c2e2cbe3109cfddad868ddae27264b536c553d5412ea08c1e2dad120"
+  },
+  "response": {
+    "active": true,
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.kyc.review",
+    "payloadHash": "5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373",
+    "command": {
+      "operationKey": "00000015-0000-4000-8000-000000000000",
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "decision": "manual_review",
+      "reasons": ["documents_checked"],
+      "reviewOperationKey": null
+    },
+    "capabilityDecisionId": "00000016-0000-4000-8000-000000000000",
+    "resource": {
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "walletEndUserId": "00000013-0000-4000-8000-000000000000",
+      "affectedPersonId": "00000012-0000-4000-8000-000000000000",
+      "level": "tier1",
+      "stateHash": "570ed6c9c9d58e7a8a107f34145c6b5308bfe1b477d222606c7fc3d7047f22d2",
+      "reviewOperationKey": null
+    }
+  },
+  "proofResponse": {
+    "proofId": "00000018-0000-4000-8000-000000000000",
+    "personId": "00000001-0000-4000-8000-000000000000",
+    "appId": "paypm-operations",
+    "deploymentId": "heritagepay",
+    "environment": "sandbox",
+    "contextId": "323456789012345678",
+    "issuer": "https://auth.paypm.test",
+    "providerSubject": "123456789012345678",
+    "baseSessionId": "223456789012345678",
+    "clientId": "operations@paypm",
+    "action": "operations.kyc.review",
+    "payloadHash": "5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373",
+    "command": {
+      "operationKey": "00000015-0000-4000-8000-000000000000",
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "decision": "manual_review",
+      "reasons": ["documents_checked"],
+      "reviewOperationKey": null
+    },
+    "capabilityDecisionId": "00000016-0000-4000-8000-000000000000",
+    "resource": {
+      "verificationId": "00000011-0000-4000-8000-000000000000",
+      "walletEndUserId": "00000013-0000-4000-8000-000000000000",
+      "affectedPersonId": "00000012-0000-4000-8000-000000000000",
+      "level": "tier1",
+      "stateHash": "570ed6c9c9d58e7a8a107f34145c6b5308bfe1b477d222606c7fc3d7047f22d2",
+      "reviewOperationKey": null
+    },
+    "proofSessionId": "423456789012345678",
+    "verifiedAt": "2026-10-03T12:00:00.000Z",
+    "expiresAt": "2026-10-03T12:01:00.000Z",
+    "consumedAt": "2026-10-03T12:00:10.000Z",
+    "assurance": "paypm_fresh_operations_passkey"
+  },
+  "receipt": "paypm-ops1.ggggggggggggggggggggggggggggggggggggggggggg",
+  "hmac": {
+    "fixtureSecret": "synthetic-fixture-purpose-only-not-a-live-credential",
+    "path": "/api/v1/internal/operations/authority/kyc/actions/current",
+    "rawJSON": "{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.kyc.review\",\"payloadHash\":\"5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373\"},\"command\":{\"operationKey\":\"00000015-0000-4000-8000-000000000000\",\"verificationId\":\"00000011-0000-4000-8000-000000000000\",\"decision\":\"manual_review\",\"reasons\":[\"documents_checked\"],\"reviewOperationKey\":null}}",
+    "signedBytes": "1791028810.00000019-0000-4000-8000-000000000000.POST./api/v1/internal/operations/authority/kyc/actions/current.{\"expected\":{\"personId\":\"00000001-0000-4000-8000-000000000000\",\"appId\":\"paypm-operations\",\"deploymentId\":\"heritagepay\",\"environment\":\"sandbox\",\"contextId\":\"323456789012345678\",\"issuer\":\"https://auth.paypm.test\",\"providerSubject\":\"123456789012345678\",\"baseSessionId\":\"223456789012345678\",\"clientId\":\"operations@paypm\",\"action\":\"operations.kyc.review\",\"payloadHash\":\"5b836522f2f65893814e7cb5a10e94e738565c685eaf7d292cc59b6e567de373\"},\"command\":{\"operationKey\":\"00000015-0000-4000-8000-000000000000\",\"verificationId\":\"00000011-0000-4000-8000-000000000000\",\"decision\":\"manual_review\",\"reasons\":[\"documents_checked\"],\"reviewOperationKey\":null}}",
+    "header": "t=1791028810,n=00000019-0000-4000-8000-000000000000,v2=d62aa39e7a6568f67ff53963afd8556e8634c336d0bba2c430a0a29fa5ed5456"
+  }
+}

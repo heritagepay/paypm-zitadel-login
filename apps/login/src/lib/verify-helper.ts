@@ -4,10 +4,8 @@ import { LoginSettings } from "@zitadel/proto/zitadel/settings/v2/login_settings
 import { PasswordExpirySettings } from "@zitadel/proto/zitadel/settings/v2/password_settings_pb";
 import { HumanUser } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
-import crypto from "crypto";
 import moment from "moment";
-import { cookies } from "next/headers";
-import { getFingerprintIdCookie } from "./fingerprint";
+import { verifiedFactor } from "./authentication-policy";
 import { getUserByID, ServiceConfig } from "./zitadel";
 
 export function checkPasswordChangeRequired(
@@ -97,7 +95,10 @@ export async function checkMFAFactors(
       m === AuthenticationMethodType.U2F,
   );
 
-  const hasAuthenticatedWithPasskey = session.factors?.webAuthN?.verifiedAt && session.factors?.webAuthN?.userVerified;
+  const hasAuthenticatedWithPasskey =
+    loginSettings &&
+    verifiedFactor(session, session.factors?.webAuthN?.verifiedAt) &&
+    session.factors?.webAuthN?.userVerified === true;
 
   // escape further checks if user has authenticated with passkey
   if (hasAuthenticatedWithPasskey) {
@@ -225,11 +226,12 @@ export async function checkMFAFactors(
  */
 export function shouldEnforceMFA(session: Session, loginSettings: LoginSettings | undefined): boolean {
   if (!loginSettings) {
-    return false;
+    return true;
   }
 
   // Check if user authenticated with passkey (passkeys are inherently multi-factor)
-  const authenticatedWithPasskey = session.factors?.webAuthN?.verifiedAt && session.factors?.webAuthN?.userVerified;
+  const authenticatedWithPasskey =
+    verifiedFactor(session, session.factors?.webAuthN?.verifiedAt) && session.factors?.webAuthN?.userVerified === true;
 
   // If user authenticated with passkey, MFA is not required regardless of settings
   if (authenticatedWithPasskey) {
@@ -244,10 +246,10 @@ export function shouldEnforceMFA(session: Session, loginSettings: LoginSettings 
   // If forceMfaLocalOnly is enabled, MFA is only required for local/password authentication
   if (loginSettings.forceMfaLocalOnly) {
     // Check if user authenticated with password (local authentication)
-    const authenticatedWithPassword = !!session.factors?.password?.verifiedAt;
+    const authenticatedWithPassword = verifiedFactor(session, session.factors?.password?.verifiedAt);
 
     // Check if user authenticated with IDP (external authentication)
-    const authenticatedWithIDP = !!session.factors?.intent?.verifiedAt;
+    const authenticatedWithIDP = verifiedFactor(session, session.factors?.intent?.verifiedAt);
 
     // If user authenticated with IDP, MFA is not required for forceMfaLocalOnly
     if (authenticatedWithIDP) {
@@ -263,30 +265,8 @@ export function shouldEnforceMFA(session: Session, loginSettings: LoginSettings 
   return false;
 }
 
-export async function checkUserVerification(userId: string): Promise<boolean> {
-  // check if a verification was done earlier
-  const cookiesList = await cookies();
-
-  // only read cookie to prevent issues on page.tsx
-  const fingerPrintCookie = await getFingerprintIdCookie();
-
-  if (!fingerPrintCookie || !fingerPrintCookie.value) {
-    return false;
-  }
-
-  const verificationCheck = crypto.createHash("sha256").update(`${userId}:${fingerPrintCookie.value}`).digest("hex");
-
-  const cookieValue = await cookiesList.get("verificationCheck")?.value;
-
-  if (!cookieValue) {
-    console.warn("User verification check cookie not found. User verification check failed.");
-    return false;
-  }
-
-  if (cookieValue !== verificationCheck) {
-    console.warn(`User verification check failed. Expected ${verificationCheck} but got ${cookieValue}`);
-    return false;
-  }
-
-  return true;
+export async function checkUserVerification(_userId: string): Promise<boolean> {
+  // Retired compatibility API. An unkeyed fingerprint hash never proves ownership.
+  // Initial credential setup must use a provider-issued reset/registration code.
+  return false;
 }

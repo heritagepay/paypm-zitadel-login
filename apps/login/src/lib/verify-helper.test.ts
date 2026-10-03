@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { cookies } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFingerprintIdCookie } from "./fingerprint";
@@ -14,7 +13,7 @@ import {
 } from "./verify-helper";
 
 // Mock function to create timestamps - following the same pattern as session.test.ts
-function createMockTimestamp(offsetMs = 3600000): any {
+function createMockTimestamp(offsetMs = 0): any {
   return {
     seconds: BigInt(Math.floor((Date.now() + offsetMs) / 1000)),
     nanos: 0,
@@ -27,6 +26,8 @@ function createMockSession(overrides: any = {}): any {
 
   const defaultSession = {
     id: "test-session-id",
+    creationDate: createMockTimestamp(-1000),
+    expirationDate: createMockTimestamp(3600000),
     factors: {
       user: {
         id: "test-user-id",
@@ -61,9 +62,9 @@ describe("shouldEnforceMFA", () => {
   });
 
   describe("when loginSettings is undefined", () => {
-    it("should return false", () => {
+    it("should require a policy rather than bypass MFA", () => {
       const result = shouldEnforceMFA(mockSession, undefined);
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
   });
 
@@ -363,6 +364,8 @@ vi.mock("crypto", () => ({
 describe("checkPasswordChangeRequired", () => {
   const mockSession: any = {
     id: "session-123",
+    creationDate: createMockTimestamp(-1000),
+    expirationDate: createMockTimestamp(3600000),
     factors: {
       user: {
         id: "user-123",
@@ -658,91 +661,10 @@ describe("checkEmailVerification", () => {
 });
 
 describe("checkUserVerification", () => {
-  let mockCookies: any;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockCookies = {
-      get: vi.fn(),
-    };
-    vi.mocked(cookies).mockResolvedValue(mockCookies);
-  });
-
-  it("should return true if verification hash matches", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue({
-      name: "fingerprintId",
-      value: "fingerprint-123",
-    } as any);
-
-    mockCookies.get.mockReturnValue({
-      value: "mockedhash123",
-    });
-
-    const result = await checkUserVerification("user-123");
-
-    expect(result).toBe(true);
-  });
-
-  it("should return false if fingerprint cookie not found", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue(undefined);
-
-    const result = await checkUserVerification("user-123");
-
-    expect(result).toBe(false);
-  });
-
-  it("should return false if fingerprint cookie has no value", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue({
-      name: "fingerprintId",
-      value: "",
-    } as any);
-
-    const result = await checkUserVerification("user-123");
-
-    expect(result).toBe(false);
-  });
-
-  it("should return false if verification cookie not found", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue({
-      name: "fingerprintId",
-      value: "fingerprint-123",
-    } as any);
-
-    mockCookies.get.mockReturnValue(undefined);
-
-    const result = await checkUserVerification("user-123");
-
-    expect(result).toBe(false);
-  });
-
-  it("should return false if verification hash does not match", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue({
-      name: "fingerprintId",
-      value: "fingerprint-123",
-    } as any);
-
-    mockCookies.get.mockReturnValue({
-      value: "wronghash",
-    });
-
-    const result = await checkUserVerification("user-123");
-
-    expect(result).toBe(false);
-  });
-
-  it("should create hash from userId and fingerprint", async () => {
-    vi.mocked(getFingerprintIdCookie).mockResolvedValue({
-      name: "fingerprintId",
-      value: "fingerprint-456",
-    } as any);
-
-    mockCookies.get.mockReturnValue({
-      value: "mockedhash123",
-    });
-
-    await checkUserVerification("user-456");
-
-    expect(crypto.createHash).toHaveBeenCalledWith("sha256");
+  it("rejects the former predictable fingerprint hash", async () => {
+    vi.mocked(getFingerprintIdCookie).mockResolvedValue({ name: "fingerprintId", value: "chosen-fingerprint" } as any);
+    vi.mocked(cookies).mockResolvedValue({ get: vi.fn(() => ({ value: "any-client-computable-hash" })) } as any);
+    expect(await checkUserVerification("user-123")).toBe(false);
   });
 });
 
@@ -780,7 +702,7 @@ describe("checkMFAFactors", () => {
       },
     };
 
-    const result = await checkMFAFactors("https://example.com", sessionWithPasskey, mockLoginSettings, []);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, sessionWithPasskey, mockLoginSettings, []);
 
     expect(result).toBeUndefined();
   });
@@ -788,7 +710,7 @@ describe("checkMFAFactors", () => {
   it("should redirect to TOTP if only TOTP is available", async () => {
     const authMethods = [AuthenticationMethodType.TOTP];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toEqual({
       redirect: expect.stringContaining("/otp/time-based"),
@@ -798,7 +720,7 @@ describe("checkMFAFactors", () => {
   it("should redirect to OTP SMS if only OTP_SMS is available", async () => {
     const authMethods = [AuthenticationMethodType.OTP_SMS];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toEqual({
       redirect: expect.stringContaining("/otp/sms"),
@@ -808,7 +730,7 @@ describe("checkMFAFactors", () => {
   it("should redirect to OTP Email if only OTP_EMAIL is available", async () => {
     const authMethods = [AuthenticationMethodType.OTP_EMAIL];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toEqual({
       redirect: expect.stringContaining("/otp/email"),
@@ -818,7 +740,7 @@ describe("checkMFAFactors", () => {
   it("should redirect to U2F if only U2F is available", async () => {
     const authMethods = [AuthenticationMethodType.U2F];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toEqual({
       redirect: expect.stringContaining("/u2f"),
@@ -828,7 +750,7 @@ describe("checkMFAFactors", () => {
   it("should redirect to MFA selection page if multiple factors available", async () => {
     const authMethods = [AuthenticationMethodType.TOTP, AuthenticationMethodType.OTP_SMS];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toEqual({
       redirect: expect.stringContaining("/mfa?"),
@@ -838,7 +760,13 @@ describe("checkMFAFactors", () => {
   it("should include organization in redirect params", async () => {
     const authMethods = [AuthenticationMethodType.TOTP];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods, "custom-org");
+    const result = await checkMFAFactors(
+      { baseUrl: "https://example.com" },
+      mockSession,
+      mockLoginSettings,
+      authMethods,
+      "custom-org",
+    );
 
     expect(result?.redirect).toContain("organization=custom-org");
   });
@@ -847,7 +775,7 @@ describe("checkMFAFactors", () => {
     const authMethods = [AuthenticationMethodType.TOTP];
 
     const result = await checkMFAFactors(
-      "https://example.com",
+      { baseUrl: "https://example.com" },
       mockSession,
       mockLoginSettings,
       authMethods,
@@ -861,7 +789,7 @@ describe("checkMFAFactors", () => {
   it("should ignore non-MFA authentication methods", async () => {
     const authMethods = [AuthenticationMethodType.PASSWORD, AuthenticationMethodType.PASSKEY];
 
-    const result = await checkMFAFactors("https://example.com", mockSession, mockLoginSettings, authMethods);
+    const result = await checkMFAFactors({ baseUrl: "https://example.com" }, mockSession, mockLoginSettings, authMethods);
 
     expect(result).toBeUndefined();
   });
