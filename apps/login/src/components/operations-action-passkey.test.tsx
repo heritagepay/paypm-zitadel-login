@@ -55,6 +55,30 @@ afterEach(() => {
 });
 describe("Operations action passkey experience", () => {
   it.each(["en", "fr"])(
+    "describes individual KYC review/decision in %s without granting access or implying approval",
+    async (locale) => {
+      const copy = locale === "fr" ? fr : en;
+      for (const action of ["review", "decide"] as const) {
+        fetcher.mockImplementation(async (url: string) =>
+          Response.json(
+            url.endsWith("/challenge") ? { ...flow(), action: `operations.kyc.${action}` } : { callbackUrl: callback },
+          ),
+        );
+        mount(locale);
+        await screen.findByRole("button", { name: copy.operationsAction.verify });
+        expect(
+          screen.getByText(
+            action === "review" ? copy.operationsAction.actions.kycCaseReview : copy.operationsAction.actions.kycCaseDecide,
+          ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(copy.operationsAction.actions.kycGrantApprove)).not.toBeInTheDocument();
+        expect(screen.queryByText(copy.operationsAction.actions.approve)).not.toBeInTheDocument();
+        expect(get).not.toHaveBeenCalled();
+        cleanup();
+      }
+    },
+  );
+  it.each(["en", "fr"])(
     "describes KYC authority approval in %s with no read or settlement grant implication",
     async (locale) => {
       const copy = locale === "fr" ? fr : en;

@@ -465,6 +465,8 @@
       "deploymentGrantApprove": "Approuver un accès en lecture à ce déploiement",
       "kycGrantReview": "Examiner un accès à la revue et aux décisions KYC pour ce déploiement",
       "kycGrantApprove": "Approuver un accès à la revue et aux décisions KYC pour ce déploiement",
+      "kycCaseReview": "Examiner ce dossier KYC",
+      "kycCaseDecide": "Confirmer cette décision KYC",
       "kycGrantRevoke": "Révoquer un accès à la revue et aux décisions KYC pour ce déploiement",
       "deploymentGrantRevoke": "Révoquer un accès en lecture à ce déploiement"
     }

@@ -26,7 +26,9 @@ export type OperationsActionExpected = {
     | "operations.access.deployment-grant.revoke"
     | "operations.access.kyc-grant.review"
     | "operations.access.kyc-grant.approve"
-    | "operations.access.kyc-grant.revoke";
+    | "operations.access.kyc-grant.revoke"
+    | "operations.kyc.review"
+    | "operations.kyc.decide";
   payloadHash: string;
 };
 export type OperationsSettlementCommand = { operationKey: string; merchantBusinessId: string; organizationId: string };
@@ -54,11 +56,27 @@ export type OperationsDeploymentGrantCommand = {
 export type OperationsKycGrantCommand = Omit<OperationsDeploymentGrantCommand, "capability"> & {
   capability: "operations.kyc.review" | "operations.kyc.decide";
 };
+export type OperationsKycCaseCommand = {
+  operationKey: string;
+  verificationId: string;
+  decision: "manual_review" | "approved" | "rejected";
+  reasons: string[];
+  reviewOperationKey: string | null;
+};
+export type OperationsKycCaseResource = {
+  verificationId: string;
+  walletEndUserId: string;
+  affectedPersonId: string;
+  level: "tier1" | "tier2" | "tier3";
+  stateHash: string;
+  reviewOperationKey: string | null;
+};
 export type OperationsActionCommand =
   | OperationsSettlementCommand
   | OperationsGrantCommand
   | OperationsDeploymentGrantCommand
-  | OperationsKycGrantCommand;
+  | OperationsKycGrantCommand
+  | OperationsKycCaseCommand;
 export type OperationsGrantResource = Omit<OperationsGrantCommand, "operationKey" | "expiresAt" | "reason"> & {
   policyHash: string;
 };
@@ -76,7 +94,8 @@ export type OperationsActionBinding = {
     | { merchantBusinessId: string; organizationId: string; currency: string }
     | OperationsGrantResource
     | OperationsDeploymentGrantResource
-    | (Omit<OperationsKycGrantCommand, "operationKey" | "expiresAt" | "reason"> & { policyHash: string });
+    | (Omit<OperationsKycGrantCommand, "operationKey" | "expiresAt" | "reason"> & { policyHash: string })
+    | OperationsKycCaseResource;
 };
 export type OperationsCallerMaterial = {
   idToken: string;

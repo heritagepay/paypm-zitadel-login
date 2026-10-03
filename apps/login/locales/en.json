@@ -501,6 +501,8 @@
       "deploymentGrantApprove": "Approve read access for this deployment",
       "kycGrantReview": "Review KYC review and decision access for this deployment",
       "kycGrantApprove": "Approve KYC review and decision access for this deployment",
+      "kycCaseReview": "Review this KYC case",
+      "kycCaseDecide": "Confirm this KYC decision",
       "kycGrantRevoke": "Revoke KYC review and decision access for this deployment",
       "deploymentGrantRevoke": "Revoke read access for this deployment"
     }

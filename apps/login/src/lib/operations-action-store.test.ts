@@ -5,6 +5,7 @@ import postgres, { type Sql } from "postgres";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import deploymentGrantFixture from "../../test-fixtures/operations-deployment-grant.json";
 import grantFixture from "../../test-fixtures/operations-governed-grant.json";
+import kycCaseFixture from "../../test-fixtures/operations-kyc-case.json";
 import kycGrantFixture from "../../test-fixtures/operations-kyc-grant.json";
 import { OperationsActionStore, type OperationsActionBinding } from "./operations-action-store";
 import { WorkforceStore } from "./workforce-store";
@@ -136,7 +137,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
       }),
     ).rejects.toMatchObject({ code: "operations_action_conflict" });
   });
-  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture])(
+  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture, kycCaseFixture])(
     "persists an exact grant discriminator/policy/target across races and uncertain consumption",
     async (fixture) => {
       const input = await ready();
@@ -148,7 +149,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
         },
         command: fixture.request.command as any,
         resource: fixture.response.resource as any,
-        capabilityDecisionId: fixture.request.command.policyId,
+        capabilityDecisionId: fixture.response.capabilityDecisionId,
       };
       const rows = await Promise.all(Array.from({ length: 5 }, () => store.reserve(input)));
       expect(new Set(rows.map((r) => r.id)).size).toBe(1);
@@ -333,7 +334,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
       code: "operations_action_conflict",
     });
   });
-  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture])(
+  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture, kycCaseFixture])(
     "a retired family request retains its exact original status without sealed credentials or permission resurrection",
     async (fixture) => {
       const input = await ready();
@@ -344,7 +345,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
           payloadHash: fixture.request.expected.payloadHash,
         },
         command: fixture.request.command as any,
-        capabilityDecisionId: fixture.request.command.policyId,
+        capabilityDecisionId: fixture.response.capabilityDecisionId,
         resource: fixture.response.resource as any,
       };
       await store.reserve(input);
