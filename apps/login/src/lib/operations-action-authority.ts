@@ -7,6 +7,7 @@ import type {
   OperationsCallerMaterial,
   OperationsDeploymentGrantCommand,
   OperationsGrantCommand,
+  OperationsKycGrantCommand,
   OperationsSettlementCommand,
 } from "./operations-action-store";
 import { workforceAssertionHash } from "./workforce-assertion";
@@ -22,7 +23,7 @@ export function canonicalOperationsJson(value: unknown): string {
 }
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const operationUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
-export type OperationsActionFamily = "settlement" | "grant" | "deployment-grant";
+export type OperationsActionFamily = "settlement" | "grant" | "deployment-grant" | "kyc-grant";
 export function operationsActionFamily(action: unknown): OperationsActionFamily | undefined {
   if (
     [
@@ -46,6 +47,14 @@ export function operationsActionFamily(action: unknown): OperationsActionFamily 
     ].includes(String(action))
   )
     return "deployment-grant";
+  if (
+    [
+      "operations.access.kyc-grant.review",
+      "operations.access.kyc-grant.approve",
+      "operations.access.kyc-grant.revoke",
+    ].includes(String(action))
+  )
+    return "kyc-grant";
 }
 export function operationsCommand(
   value: unknown,
@@ -53,6 +62,7 @@ export function operationsCommand(
 ): value is OperationsActionCommand {
   if (family === "grant") return operationsGrantCommand(value);
   if (family === "deployment-grant") return operationsDeploymentGrantCommand(value);
+  if (family === "kyc-grant") return operationsKycGrantCommand(value);
   return (
     !!value &&
     typeof value === "object" &&
@@ -104,6 +114,16 @@ export function operationsGrantCommand(value: unknown): value is OperationsGrant
   );
 }
 export function operationsDeploymentGrantCommand(value: unknown): value is OperationsDeploymentGrantCommand {
+  return boundedDeploymentGrantCommand(value, [
+    "operations.transactions.read",
+    "operations.kyc.read",
+    "operations.audit.read",
+  ]);
+}
+export function operationsKycGrantCommand(value: unknown): value is OperationsKycGrantCommand {
+  return boundedDeploymentGrantCommand(value, ["operations.kyc.review", "operations.kyc.decide"]);
+}
+function boundedDeploymentGrantCommand(value: unknown, capabilities: readonly string[]): boolean {
   if (
     !value ||
     typeof value !== "object" ||
@@ -126,7 +146,7 @@ export function operationsDeploymentGrantCommand(value: unknown): value is Opera
     /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(a.issuer) &&
     typeof a.subject === "string" &&
     /^[1-9]\d{0,39}$/.test(a.subject) &&
-    ["operations.transactions.read", "operations.kyc.read", "operations.audit.read"].includes(c.capability) &&
+    capabilities.includes(c.capability) &&
     typeof c.expiresAt === "string" &&
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.expiresAt) &&
     Number.isFinite(Date.parse(c.expiresAt)) &&
@@ -184,6 +204,7 @@ export async function readOperationsActionAuthority(
     settlement: "PAYPM_OPERATIONS_ACTION_AUTHORITY",
     grant: "PAYPM_OPERATIONS_GRANT_AUTHORITY",
     "deployment-grant": "PAYPM_OPERATIONS_DEPLOYMENT_GRANT_AUTHORITY",
+    "kyc-grant": "PAYPM_OPERATIONS_KYC_GRANT_AUTHORITY",
   };
   const prefix = prefixes[family];
   const url = process.env[prefix + "_URL"],
@@ -203,6 +224,8 @@ export async function readOperationsActionAuthority(
       process.env.PAYPM_OPERATIONS_GRANT_CONSUMER_TOKEN,
       process.env.PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN,
       process.env.PAYPM_OPERATIONS_DEPLOYMENT_GRANT_CONSUMER_TOKEN,
+      process.env.PAYPM_OPERATIONS_KYC_GRANT_BFF_TOKEN,
+      process.env.PAYPM_OPERATIONS_KYC_GRANT_CONSUMER_TOKEN,
       process.env.PAYPM_WORKFORCE_ADMISSION_READER_TOKEN,
       process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET,
       process.env.PAYPM_WORKFORCE_FLOW_KEY_BASE64,
@@ -228,6 +251,7 @@ export async function readOperationsActionAuthority(
         settlement: "/api/v1/internal/operations/authority/actions/current",
         grant: "/api/v1/internal/operations/authority/grants/actions/current",
         "deployment-grant": "/api/v1/internal/operations/authority/deployment-grants/actions/current",
+        "kyc-grant": "/api/v1/internal/operations/authority/kyc-grants/actions/current",
       }[family] ||
     !/^[A-Za-z0-9_:-]{1,26}$/.test(keyId)
   )
@@ -271,7 +295,7 @@ export async function readOperationsActionAuthority(
   )
     throw denied();
   if (family !== "settlement") {
-    const c = command as OperationsGrantCommand | OperationsDeploymentGrantCommand,
+    const c = command as OperationsGrantCommand | OperationsDeploymentGrantCommand | OperationsKycGrantCommand,
       r = result.resource;
     if (
       !r ||
@@ -318,8 +342,10 @@ export async function readOperationsActionAuthority(
     input:
       family !== "settlement"
         ? {
-            expiresAt: (command as OperationsGrantCommand | OperationsDeploymentGrantCommand).expiresAt,
-            reason: (command as OperationsGrantCommand | OperationsDeploymentGrantCommand).reason,
+            expiresAt: (command as OperationsGrantCommand | OperationsDeploymentGrantCommand | OperationsKycGrantCommand)
+              .expiresAt,
+            reason: (command as OperationsGrantCommand | OperationsDeploymentGrantCommand | OperationsKycGrantCommand)
+              .reason,
           }
         : expected.action === "operations.merchant.settlement.approve"
           ? { decision: "approve" }

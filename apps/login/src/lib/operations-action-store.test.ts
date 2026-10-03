@@ -5,6 +5,7 @@ import postgres, { type Sql } from "postgres";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import deploymentGrantFixture from "../../test-fixtures/operations-deployment-grant.json";
 import grantFixture from "../../test-fixtures/operations-governed-grant.json";
+import kycGrantFixture from "../../test-fixtures/operations-kyc-grant.json";
 import { OperationsActionStore, type OperationsActionBinding } from "./operations-action-store";
 import { WorkforceStore } from "./workforce-store";
 const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL,
@@ -135,7 +136,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
       }),
     ).rejects.toMatchObject({ code: "operations_action_conflict" });
   });
-  it.each([grantFixture, deploymentGrantFixture])(
+  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture])(
     "persists an exact grant discriminator/policy/target across races and uncertain consumption",
     async (fixture) => {
       const input = await ready();
@@ -332,7 +333,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
       code: "operations_action_conflict",
     });
   });
-  it.each([grantFixture, deploymentGrantFixture])(
+  it.each([grantFixture, deploymentGrantFixture, kycGrantFixture])(
     "a retired family request retains its exact original status without sealed credentials or permission resurrection",
     async (fixture) => {
       const input = await ready();

@@ -63,6 +63,9 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
           "operations.access.deployment-grant.review",
           "operations.access.deployment-grant.approve",
           "operations.access.deployment-grant.revoke",
+          "operations.access.kyc-grant.review",
+          "operations.access.kyc-grant.approve",
+          "operations.access.kyc-grant.revoke",
         ].includes(value.action) ||
         !value.publicKey ||
         value.publicKey.userVerification !== "required" ||
@@ -178,11 +181,13 @@ export function OperationsActionPasskey({ requestId, capability }: { requestId: 
       setCancelling(false);
     }
   }
-  const grantPrefix = flow?.action.startsWith("operations.access.deployment-grant.")
-    ? "deploymentGrant"
-    : flow?.action.startsWith("operations.access.grant.")
-      ? "grant"
-      : undefined;
+  const grantPrefix = flow?.action.startsWith("operations.access.kyc-grant.")
+    ? "kycGrant"
+    : flow?.action.startsWith("operations.access.deployment-grant.")
+      ? "deploymentGrant"
+      : flow?.action.startsWith("operations.access.grant.")
+        ? "grant"
+        : undefined;
   const action = grantPrefix
     ? grantPrefix +
       flow!.action

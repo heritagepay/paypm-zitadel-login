@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import deploymentGrantFixture from "../../test-fixtures/operations-deployment-grant.json";
 import grantFixture from "../../test-fixtures/operations-governed-grant.json";
+import kycGrantFixture from "../../test-fixtures/operations-kyc-grant.json";
 import statusFixture from "../../test-fixtures/operations-original-status.json";
 import { readOperationsActionAuthority } from "./operations-action-authority";
 import {
@@ -236,8 +237,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 describe("separate Operations-owned action ceremony", () => {
-  function grant(family: "grant" | "deployment-grant" = "grant") {
-    const fixture = family === "grant" ? grantFixture : deploymentGrantFixture;
+  function grant(family: "grant" | "deployment-grant" | "kyc-grant" = "grant") {
+    const fixture =
+      family === "grant" ? grantFixture : family === "deployment-grant" ? deploymentGrantFixture : kycGrantFixture;
     const grantBinding = {
       expected: {
         ...e,
@@ -250,12 +252,16 @@ describe("separate Operations-owned action ceremony", () => {
     };
     row.binding = grantBinding as any;
     vi.mocked(readOperationsActionAuthority).mockResolvedValue(row.binding);
-    const prefix = family === "grant" ? "PAYPM_OPERATIONS_GRANT" : "PAYPM_OPERATIONS_DEPLOYMENT_GRANT";
+    const prefix = {
+      grant: "PAYPM_OPERATIONS_GRANT",
+      "deployment-grant": "PAYPM_OPERATIONS_DEPLOYMENT_GRANT",
+      "kyc-grant": "PAYPM_OPERATIONS_KYC_GRANT",
+    }[family];
     vi.stubEnv(prefix + "_BFF_TOKEN", "g".repeat(40));
     vi.stubEnv(prefix + "_CONSUMER_TOKEN", "h".repeat(40));
     return grantBinding;
   }
-  it.each(["grant", "deployment-grant"] as const)(
+  it.each(["grant", "deployment-grant", "kyc-grant"] as const)(
     "the separate %s family reserves and verifies one exact current action before its private consume",
     async (family) => {
       const g = grant(family);
@@ -353,7 +359,7 @@ describe("separate Operations-owned action ceremony", () => {
     ).toBe(403);
     expect(store.consume).not.toHaveBeenCalled();
   });
-  it.each(["grant", "deployment-grant"] as const)(
+  it.each(["grant", "deployment-grant", "kyc-grant"] as const)(
     "denies a revoked target or changed owner policy after provider acceptance without issuing a %s receipt",
     async (family) => {
       grant(family);
@@ -367,49 +373,50 @@ describe("separate Operations-owned action ceremony", () => {
       expect(store.verified).not.toHaveBeenCalled();
     },
   );
-  it("deployment grants reject both other routes, credentials and altered scope before provider effects", async () => {
-    const g = grant("deployment-grant");
-    const body = { ...startBody(), action: g.expected.action, payloadHash: g.expected.payloadHash, command: g.command };
-    const request = (token: string, payload: unknown) =>
-      new Request("https://login.paypm.test/private", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-    for (const family of ["settlement", "grant"] as const) {
-      expect((await startOperationsAction(request("g".repeat(40), body), family)).status).toBe(403);
+  it.each(["deployment-grant", "kyc-grant"] as const)(
+    "%s grants reject every other route, credential and altered scope before provider effects",
+    async (family) => {
+      const g = grant(family);
+      const body = { ...startBody(), action: g.expected.action, payloadHash: g.expected.payloadHash, command: g.command };
+      const request = (token: string, payload: unknown) =>
+        new Request("https://login.paypm.test/private", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+      for (const otherFamily of (["settlement", "grant", "deployment-grant", "kyc-grant"] as const).filter(
+        (value) => value !== family,
+      )) {
+        expect((await startOperationsAction(request("g".repeat(40), body), otherFamily)).status).toBe(403);
+        expect(
+          (
+            await consumeOperationsAction(
+              request("h".repeat(40), { receipt, expected: g.expected, command: g.command }),
+              false,
+              otherFamily,
+            )
+          ).status,
+        ).toBe(403);
+      }
+      expect((await startOperationsAction(request("b".repeat(40), body), family)).status).toBe(403);
+      expect(
+        (await startOperationsAction(request("g".repeat(40), { ...body, command: grantFixture.request.command }), family))
+          .status,
+      ).toBe(403);
       expect(
         (
           await consumeOperationsAction(
-            request("h".repeat(40), { receipt, expected: g.expected, command: g.command }),
+            request("c".repeat(40), { receipt, expected: g.expected, command: g.command }),
             false,
             family,
           )
         ).status,
       ).toBe(403);
-    }
-    expect((await startOperationsAction(request("b".repeat(40), body), "deployment-grant")).status).toBe(403);
-    expect(
-      (
-        await startOperationsAction(
-          request("g".repeat(40), { ...body, command: grantFixture.request.command }),
-          "deployment-grant",
-        )
-      ).status,
-    ).toBe(403);
-    expect(
-      (
-        await consumeOperationsAction(
-          request("c".repeat(40), { receipt, expected: g.expected, command: g.command }),
-          false,
-          "deployment-grant",
-        )
-      ).status,
-    ).toBe(403);
-    expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
-    expect(store.reserve).not.toHaveBeenCalled();
-    expect(store.consume).not.toHaveBeenCalled();
-  });
+      expect(createSessionFromChecksAndChallenges).not.toHaveBeenCalled();
+      expect(store.reserve).not.toHaveBeenCalled();
+      expect(store.consume).not.toHaveBeenCalled();
+    },
+  );
   it("reserves one caller request before required-UV provider creation and returns no proof tokens", async () => {
     const response = await start();
     expect(response.status).toBe(200);
@@ -664,7 +671,7 @@ describe("separate Operations-owned action ceremony", () => {
     expect(await response.json()).toEqual(statusFixture.response);
     noStatusEffects();
   });
-  it.each(["settlement", "grant", "deployment-grant"] as const)(
+  it.each(["settlement", "grant", "deployment-grant", "kyc-grant"] as const)(
     "observes the absent original %s operation using only its distinct purpose and current proof pair",
     async (family) => {
       if (family !== "settlement") grant(family);

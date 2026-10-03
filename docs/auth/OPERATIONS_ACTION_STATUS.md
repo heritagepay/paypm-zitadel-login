@@ -12,6 +12,7 @@ Each family has its own endpoint and existing BFF purpose credential:
 | Settlement | `/api/internal/v1/operations/actions/requests/:id/status` | `PAYPM_OPERATIONS_ACTION_BFF_TOKEN` |
 | Company grant | `/api/internal/v1/operations/grants/actions/requests/:id/status` | `PAYPM_OPERATIONS_GRANT_BFF_TOKEN` |
 | Deployment read grant | `/api/internal/v1/operations/deployment-grants/actions/requests/:id/status` | `PAYPM_OPERATIONS_DEPLOYMENT_GRANT_BFF_TOKEN` |
+| KYC access grant | `/api/internal/v1/operations/kyc-grants/actions/requests/:id/status` | `PAYPM_OPERATIONS_KYC_GRANT_BFF_TOKEN` |
 
 Exact six-key request: `{idToken,accessToken,nonce,clientId,expected,command}`.
 `expected` is the existing eleven-key action binding; `command` is the strict

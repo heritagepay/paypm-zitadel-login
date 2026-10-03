@@ -23,7 +23,10 @@ export type OperationsActionExpected = {
     | "operations.access.grant.revoke"
     | "operations.access.deployment-grant.review"
     | "operations.access.deployment-grant.approve"
-    | "operations.access.deployment-grant.revoke";
+    | "operations.access.deployment-grant.revoke"
+    | "operations.access.kyc-grant.review"
+    | "operations.access.kyc-grant.approve"
+    | "operations.access.kyc-grant.revoke";
   payloadHash: string;
 };
 export type OperationsSettlementCommand = { operationKey: string; merchantBusinessId: string; organizationId: string };
@@ -48,10 +51,14 @@ export type OperationsDeploymentGrantCommand = {
   expiresAt: string;
   reason: string;
 };
+export type OperationsKycGrantCommand = Omit<OperationsDeploymentGrantCommand, "capability"> & {
+  capability: "operations.kyc.review" | "operations.kyc.decide";
+};
 export type OperationsActionCommand =
   | OperationsSettlementCommand
   | OperationsGrantCommand
-  | OperationsDeploymentGrantCommand;
+  | OperationsDeploymentGrantCommand
+  | OperationsKycGrantCommand;
 export type OperationsGrantResource = Omit<OperationsGrantCommand, "operationKey" | "expiresAt" | "reason"> & {
   policyHash: string;
 };
@@ -68,7 +75,8 @@ export type OperationsActionBinding = {
   resource:
     | { merchantBusinessId: string; organizationId: string; currency: string }
     | OperationsGrantResource
-    | OperationsDeploymentGrantResource;
+    | OperationsDeploymentGrantResource
+    | (Omit<OperationsKycGrantCommand, "operationKey" | "expiresAt" | "reason"> & { policyHash: string });
 };
 export type OperationsCallerMaterial = {
   idToken: string;

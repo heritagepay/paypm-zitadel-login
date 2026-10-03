@@ -499,6 +499,9 @@
       "grantRevoke": "Revoke an Operations access grant",
       "deploymentGrantReview": "Review read access for this deployment",
       "deploymentGrantApprove": "Approve read access for this deployment",
+      "kycGrantReview": "Review KYC review and decision access for this deployment",
+      "kycGrantApprove": "Approve KYC review and decision access for this deployment",
+      "kycGrantRevoke": "Revoke KYC review and decision access for this deployment",
       "deploymentGrantRevoke": "Revoke read access for this deployment"
     }
   }

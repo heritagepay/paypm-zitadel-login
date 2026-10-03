@@ -37,6 +37,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Operations retirement-only capture", () => {
+  it.each(["DEPLOYMENT", "KYC"])("rejects key reuse with every %s grant credential purpose", (family) => {
+    for (const suffix of ["BFF_TOKEN", "CONSUMER_TOKEN", "AUTHORITY_API_KEY"]) {
+      const purpose = `PAYPM_OPERATIONS_${family}_GRANT_${suffix}`;
+      vi.stubEnv(purpose, process.env.PAYPM_OPERATIONS_RETIREMENT_PROOF_KEY_BASE64!);
+      expect(() => mintOperationsRetirementProof(admission())).toThrow();
+      vi.stubEnv(purpose, "");
+    }
+  });
   it("qualifies the independent consumer fixture/header/signature and exact fifteen-field logout tuple", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00.000Z"));
