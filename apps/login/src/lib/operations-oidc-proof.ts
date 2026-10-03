@@ -35,7 +35,7 @@ async function json(response: Response) {
 }
 
 /** Pinned ZITADEL v4.15.3 ID-token sid is the Session API ID, not access-token jti. */
-export async function verifyOperationsOidcProof(
+export async function verifyWorkforceOidcProof(
   input: {
     idToken: string;
     accessToken: string;
@@ -43,14 +43,32 @@ export async function verifyOperationsOidcProof(
     clientId: string;
   },
   issuer: string,
+  purpose: "operations" | "identity",
 ): Promise<OperationsOidcProof> {
-  const resourceClient = process.env.PAYPM_OPERATIONS_INTROSPECTION_CLIENT_ID,
-    resourceSecret = process.env.PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET;
+  const resourceClient =
+      process.env[
+        purpose === "identity" ? "PAYPM_IDENTITY_INTROSPECTION_CLIENT_ID" : "PAYPM_OPERATIONS_INTROSPECTION_CLIENT_ID"
+      ],
+    resourceSecret =
+      process.env[
+        purpose === "identity"
+          ? "PAYPM_IDENTITY_INTROSPECTION_CLIENT_SECRET"
+          : "PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET"
+      ];
   if (
     !resourceClient ||
     !resourceSecret ||
     resourceSecret.length < 32 ||
     [
+      process.env.PAYPM_IDENTITY_ADMISSION_READER_TOKEN,
+      process.env.PAYPM_IDENTITY_LOGOUT_TOKEN,
+      process.env.PAYPM_IDENTITY_ACTION_BFF_TOKEN,
+      process.env.PAYPM_IDENTITY_ACTION_CONSUMER_TOKEN,
+      process.env[
+        purpose === "identity"
+          ? "PAYPM_OPERATIONS_INTROSPECTION_CLIENT_SECRET"
+          : "PAYPM_IDENTITY_INTROSPECTION_CLIENT_SECRET"
+      ],
       process.env.PAYPM_OPERATIONS_ADMISSION_READER_TOKEN,
       process.env.PAYPM_WORKFORCE_ADMISSION_READER_TOKEN,
       process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET,
@@ -178,4 +196,12 @@ export async function verifyOperationsOidcProof(
     accessTokenHash: hash(input.accessToken),
     nonceHash: hash(input.nonce),
   };
+}
+
+/** Operations retains its exact independently configured resource client. */
+export async function verifyOperationsOidcProof(
+  input: { idToken: string; accessToken: string; nonce: string; clientId: string },
+  issuer: string,
+) {
+  return verifyWorkforceOidcProof(input, issuer, "operations");
 }
