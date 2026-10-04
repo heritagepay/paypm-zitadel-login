@@ -35,3 +35,5 @@ are unavailable due untolerated taints; the authorized local fallback was used.
 No provider mutation, push, deployment or real staff proof is claimed. Dedicated
 DB/runtime grants, packaged migration, private service boundary, SMTP, backup
 restore, client/native RBAC, BFF logout and real authorized actors remain gates.
+
+Identity Administration browser purpose followup: separate paired-proof admission endpoint/policy/introspection client and strict22 evidence, no Operations secret/config or retirement header reuse. Separate strict4 logout persists hash-keyed original admission and retires only its exact base/dependent ceremonies before provider cleanup; accepted retries read original after expiry, never-accepted stale proof denies.146 affected checks and17 actual PostgreSQL16 Identity/Operations logout checks pass; source-type/lint/format proof is separate from configuration/runtime/actors. Parent owns BFF/browser custody/frontend; current proof source does not give product or recovery permission.
