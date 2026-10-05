@@ -16,6 +16,7 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await sql.unsafe(readFileSync(new URL("../../migrations/001_workforce_auth.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/002_legacy_recovery_retirements.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/003_workforce_action_intents.sql", import.meta.url), "utf8"));
+    await sql.unsafe(readFileSync(new URL("../../migrations/007_identity_action_requests.sql", import.meta.url), "utf8"));
     store = new WorkforceStore(sql, Buffer.alloc(32, 19));
   });
   afterEach(async () => {

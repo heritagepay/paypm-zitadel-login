@@ -11,12 +11,13 @@ suite("Operations exact logout persistence (real PostgreSQL)", () => {
   let admin: Sql, sql: Sql, store: OperationsLogoutStore, base: WorkforceStore, schema: string;
   beforeEach(async () => {
     schema = "login_logout_" + randomUUID().replaceAll("-", "");
-    admin = postgres(url!, { max: 1,onnotice:()=>{} });
+    admin = postgres(url!, { max: 1, onnotice: () => {} });
     await admin.unsafe(`CREATE SCHEMA ${schema}`);
     sql = postgres(url!, { max: 10, connection: { search_path: schema } });
     for (const v of [
       "001_workforce_auth",
       "003_workforce_action_intents",
+      "007_identity_action_requests",
       "004_operations_action_requests",
       "005_operations_logouts",
     ])

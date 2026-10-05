@@ -194,6 +194,8 @@ export class WorkforceStore {
         await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE provider_session_id=${row.provider_session_id} AND revoked_at IS NULL`;
         await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE base_session_id=${row.provider_session_id} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
         await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE base_session_id=${row.provider_session_id} AND state<>'retired'`;
+        await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_identity_action_requests WHERE base_session_id=${row.provider_session_id} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+        await tx`UPDATE login_identity_action_requests SET state='retired',caller_material_sealed=NULL,provider_material_sealed=NULL,assertion_sealed=NULL,receipt_sealed=NULL WHERE base_session_id=${row.provider_session_id} AND state<>'retired'`;
       }
     });
   }
@@ -480,6 +482,8 @@ export class WorkforceStore {
       await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE provider_session_id=${sessionId} AND revoked_at IS NULL`;
       await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE base_session_id=${sessionId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
       await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE base_session_id=${sessionId} AND state<>'retired'`;
+      await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_identity_action_requests WHERE base_session_id=${sessionId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+      await tx`UPDATE login_identity_action_requests SET state='retired',caller_material_sealed=NULL,provider_material_sealed=NULL,assertion_sealed=NULL,receipt_sealed=NULL WHERE base_session_id=${sessionId} AND state<>'retired'`;
     });
   }
   async revokeUser(issuer: string, userId: string) {
@@ -492,6 +496,8 @@ export class WorkforceStore {
       await tx`UPDATE login_workforce_admissions SET revoked_at=clock_timestamp() WHERE issuer=${issuer} AND provider_subject=${userId} AND revoked_at IS NULL`;
       await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_workforce_action_intents WHERE issuer=${issuer} AND provider_subject=${userId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
       await tx`UPDATE login_workforce_action_intents SET state='retired' WHERE issuer=${issuer} AND provider_subject=${userId} AND state<>'retired'`;
+      await tx`INSERT INTO login_workforce_revocations(provider_session_id) SELECT provider_session_id FROM login_identity_action_requests WHERE issuer=${issuer} AND provider_subject=${userId} AND provider_session_id IS NOT NULL ON CONFLICT DO NOTHING`;
+      await tx`UPDATE login_identity_action_requests SET state='retired',caller_material_sealed=NULL,provider_material_sealed=NULL,assertion_sealed=NULL,receipt_sealed=NULL WHERE issuer=${issuer} AND provider_subject=${userId} AND state<>'retired'`;
     });
   }
   async pendingRevocations() {
