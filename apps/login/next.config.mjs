@@ -29,6 +29,13 @@ const nextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH,
   output: process.env.NEXT_OUTPUT_MODE || undefined,
   outputFileTracingRoot: workspaceRoot,
+  // Retain the two locked targets of hoisted links copied by the pnpm standalone trace.
+  outputFileTracingIncludes: {
+    "/*": [
+      "../../node_modules/.pnpm/@colors+colors@1.5.0/node_modules/@colors/colors/**/*",
+      "../../node_modules/.pnpm/has-flag@3.0.0/node_modules/has-flag/**/*",
+    ],
+  },
   turbopack: { root: workspaceRoot },
   reactStrictMode: true,
   experimental: {
