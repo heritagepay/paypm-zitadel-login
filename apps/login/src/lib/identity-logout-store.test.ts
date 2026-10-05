@@ -17,6 +17,7 @@ suite("Identity exact logout persistence (real PostgreSQL)", () => {
     for (const v of [
       "001_workforce_auth",
       "003_workforce_action_intents",
+      "007_identity_action_requests",
       "004_operations_action_requests",
       "006_identity_logouts",
     ])

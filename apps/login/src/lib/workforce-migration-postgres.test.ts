@@ -16,6 +16,7 @@ const versions = [
   "004_operations_action_requests",
   "005_operations_logouts",
   "006_identity_logouts",
+  "007_identity_action_requests",
 ];
 async function run(connection: string) {
   return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
@@ -64,11 +65,11 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
     }
   });
   async function ledger() {
-    return sql<{ version: string; checksum: string; applied_at: Date }[]>`
-      SELECT version,checksum,applied_at FROM login_workforce_migrations ORDER BY version`;
+    return sql<{ version: string; checksum: string; applied_at: string }[]>`
+      SELECT version,checksum,applied_at::text AS applied_at FROM login_workforce_migrations ORDER BY version`;
   }
 
-  it("serializes concurrent initial runs, applies all six checksums once and keeps replay timestamps", async () => {
+  it("serializes concurrent initial runs, applies all seven checksums once and keeps replay timestamps", async () => {
     const results = await Promise.all([run(connection), run(connection)]);
     expect(results.map((result) => result.status)).toEqual([0, 0]);
     const initial = await ledger();
@@ -81,10 +82,10 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
     expect(await ledger()).toEqual(initial);
   });
 
-  it("expands populated 001–005 without rewriting prior rows or ledger entries", async () => {
+  it("expands populated 001–006 without rewriting prior rows or ledger entries", async () => {
     await sql.begin(async (tx) => {
       await tx`CREATE TABLE login_workforce_migrations(version text PRIMARY KEY,checksum char(64) NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`;
-      for (const version of versions.slice(0, 5)) {
+      for (const version of versions.slice(0, 6)) {
         const migration = await source(version);
         await tx.unsafe(migration.body);
         await tx`INSERT INTO login_workforce_migrations(version,checksum) VALUES(${version},${migration.checksum})`;
@@ -94,7 +95,7 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
     const initial = await ledger();
     const previous = await sql`SELECT * FROM login_workforce_epochs`;
     expect((await run(connection)).status).toBe(0);
-    expect((await ledger()).slice(0, 5)).toEqual(initial);
+    expect((await ledger()).slice(0, 6)).toEqual(initial);
     expect(await sql`SELECT * FROM login_workforce_epochs`).toEqual(previous);
     expect(await sql`SELECT request_hash FROM login_identity_logouts`).toHaveLength(0);
   });

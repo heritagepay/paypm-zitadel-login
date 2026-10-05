@@ -17,9 +17,13 @@ function url(value: string | undefined) {
     throw new Error("Identity service unavailable");
   return parsed;
 }
-/** Dedicated machine client; no human browser token or provider session token is forwarded. */
+/** Dedicated machine bearer only. Finite authority calls carry the exact BFF-custodied OIDC pair in their typed body. */
 export async function workforceIdentityRequest(path: string, body: unknown): Promise<unknown> {
-  if (!/^internal\/v1\/workforce-action-proofs\/(requests|requests\/[0-9a-f-]{36}\/complete)$/.test(path))
+  if (
+    !/^internal\/v1\/(workforce-action-proofs\/(requests|requests\/[0-9a-f-]{36}\/complete)|recovery-cases\/actions\/(current|continuations\/current))$/.test(
+      path,
+    )
+  )
     throw new Error("Unregistered Identity contract");
   const base = url(process.env.PAYPM_WORKFORCE_IDENTITY_URL),
     tokenUrl = url(process.env.PAYPM_WORKFORCE_IDENTITY_TOKEN_URL);
