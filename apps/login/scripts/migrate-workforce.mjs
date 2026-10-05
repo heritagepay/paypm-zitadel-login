@@ -18,6 +18,7 @@ try {
       "003_workforce_action_intents",
       "004_operations_action_requests",
       "005_operations_logouts",
+      "006_identity_logouts",
     ]) {
       const source = await readFile(new URL(`../migrations/${version}.sql`, import.meta.url), "utf8"),
         checksum = createHash("sha256").update(source).digest("hex");
