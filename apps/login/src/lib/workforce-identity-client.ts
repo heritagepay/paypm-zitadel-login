@@ -20,17 +20,24 @@ function url(value: string | undefined) {
 /** Dedicated machine bearer only. Finite authority calls carry the exact BFF-custodied OIDC pair in their typed body. */
 export async function workforceIdentityRequest(path: string, body: unknown): Promise<unknown> {
   if (
-    !/^internal\/v1\/(workforce-action-proofs\/(requests|requests\/[0-9a-f-]{36}\/complete)|recovery-cases\/actions\/(current|continuations\/current))$/.test(
+    !/^internal\/v1\/(workforce-action-proofs\/(requests|requests\/[0-9a-f-]{36}\/complete)|(?:recovery-cases|staff-access)\/actions\/(current|continuations\/current))$/.test(
       path,
     )
   )
     throw new Error("Unregistered Identity contract");
   const base = url(process.env.PAYPM_WORKFORCE_IDENTITY_URL),
     tokenUrl = url(process.env.PAYPM_WORKFORCE_IDENTITY_TOKEN_URL);
-  const clientId = process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_ID,
-    secret = process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET,
-    scopes = process.env.PAYPM_WORKFORCE_IDENTITY_SCOPES;
-  if (!clientId || !secret || !scopes) throw new Error("Identity service unavailable");
+  const clientId = process.env.PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_ID,
+    secret = process.env.PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_SECRET,
+    scopes = process.env.PAYPM_IDENTITY_ACTION_IDENTITY_SCOPES;
+  if (
+    !clientId ||
+    !secret ||
+    !scopes ||
+    clientId === process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_ID ||
+    secret === process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET
+  )
+    throw new Error("Identity service unavailable");
   const tokenResult = await fetch(tokenUrl, {
     method: "POST",
     cache: "no-store",

@@ -19,7 +19,9 @@ export async function readIdentityActionAuthority(
   assertIdentityCommand(expected, command);
   if (!identityActionPair(pair) || pair.clientId !== expected.clientId) throw new Error("Identity action unavailable");
   const result = await workforceIdentityRequest(
-    "internal/v1/recovery-cases/actions/" + (previous ? "continuations/current" : "current"),
+    (command.purpose === "wallet_legacy_linkage"
+      ? "internal/v1/recovery-cases/actions/"
+      : "internal/v1/staff-access/actions/") + (previous ? "continuations/current" : "current"),
     {
       ...pair,
       expected,
