@@ -18,6 +18,7 @@ import {
   sameIdentityBinding,
   sameIdentityOwner,
   type IdentityActionBinding,
+  type IdentityActionCommand,
   type IdentityActionPair,
 } from "./identity-action-contract";
 import { identityActionStore, type IdentityActionRow } from "./identity-action-store";
@@ -70,7 +71,7 @@ async function input(request: Request, keys: string[]) {
   if (!exactObject(value, keys)) throw deny();
   return value;
 }
-function callback(clientId: string) {
+function callback(clientId: string, command: IdentityActionCommand) {
   const rows: unknown = JSON.parse(process.env.PAYPM_IDENTITY_ACTION_CLIENT_POLICIES_JSON ?? "null");
   if (!Array.isArray(rows) || !rows.length || rows.length > 16) throw deny();
   const seen = new Set<string>();
@@ -97,7 +98,10 @@ function callback(clientId: string) {
   }
   const r = rows.find((r) => r.clientId === clientId);
   if (!r) throw deny();
-  return r.callbackUrl as string;
+  if (command.purpose === "wallet_legacy_linkage") return r.callbackUrl as string;
+  const staff = new URL(r.callbackUrl);
+  staff.pathname = "/api/v1/auth/browser/staff-actions/callback";
+  return staff.href;
 }
 async function admission(pair: IdentityActionPair) {
   if (!identityActionPair(pair)) throw deny();
@@ -417,7 +421,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
       ...pair,
       capability: randomBytes(32).toString("base64url"),
       callbackState: v.callbackState,
-      callbackUrl: callback(pair.clientId),
+      callbackUrl: callback(pair.clientId, initial.binding.command),
     };
     // Capability is regenerated only for an actual new reservation; hash excludes it, so retry returns the server-custodied original.
     const row = await s.reserve({

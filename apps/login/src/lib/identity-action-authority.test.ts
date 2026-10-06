@@ -15,9 +15,9 @@ let calls: { url: string; body: unknown; headers: Headers }[];
 beforeEach(() => {
   vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_URL", "https://identity.fixture.test/api/");
   vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_TOKEN_URL", "https://auth.fixture.test/oauth/v2/token");
-  vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_CLIENT_ID", "machine-fixture");
-  vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET", "synthetic-machine-secret");
-  vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_SCOPES", "openid");
+  vi.stubEnv("PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_ID", "machine-fixture");
+  vi.stubEnv("PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_SECRET", "synthetic-machine-secret");
+  vi.stubEnv("PAYPM_IDENTITY_ACTION_IDENTITY_SCOPES", "openid");
   calls = [];
   vi.stubGlobal(
     "fetch",

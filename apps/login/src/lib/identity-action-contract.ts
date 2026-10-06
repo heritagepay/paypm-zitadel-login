@@ -1,12 +1,16 @@
+import { exactObject, identityUuid } from "./identity-action-object";
+import {
+  identityStaffActions,
+  staffActionCommand,
+  staffCommandAction,
+  type StaffActionCommand,
+} from "./staff-action-contract";
 import { workforceAssertionHash } from "./workforce-assertion";
 export const identityWalletActions = {
   intake: "identity.wallet.legacy.linkage.intake",
   review: "identity.wallet.legacy.linkage.review",
 } as const;
-export const identityUuid = (v: unknown): v is string =>
-  typeof v === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(v);
-export const exactObject = (v: unknown, keys: string[]): v is Record<string, any> =>
-  !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).sort().join(",") === [...keys].sort().join(",");
+export { exactObject, identityUuid } from "./identity-action-object";
 const opaqueId = (v: unknown): v is string => typeof v === "string" && /^[1-9]\d{0,39}$/.test(v);
 const hash = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
 export type IdentityActionExpected = {
@@ -19,20 +23,24 @@ export type IdentityActionExpected = {
   appId: "identity-administration";
   deploymentId: string;
   environment: "production" | "staging" | "sandbox";
-  action: (typeof identityWalletActions)[keyof typeof identityWalletActions];
+  action:
+    | (typeof identityWalletActions)[keyof typeof identityWalletActions]
+    | (typeof identityStaffActions)[keyof typeof identityStaffActions];
   payloadHash: string;
 };
-export type IdentityActionCommand = {
+export type IdentityWalletActionCommand = {
   purpose: "wallet_legacy_linkage";
   operationKey: string;
 } & (
   | { input: { caseId: string; revision: 1; source: { operationId: string; materialHash: string } } }
   | { caseId: string; revision: 1; decision: "approve" | "reject" }
 );
+export type IdentityActionCommand = IdentityWalletActionCommand | StaffActionCommand;
 export type IdentityActionBinding = { expected: IdentityActionExpected; command: IdentityActionCommand; caseId: string };
 export type IdentityActionPair = { idToken: string; accessToken: string; nonce: string; clientId: string };
 export function identityActionCommand(v: unknown): v is IdentityActionCommand {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  if (staffActionCommand(v)) return true;
   const c = v as Record<string, any>;
   if (c.purpose !== "wallet_legacy_linkage" || !identityUuid(c.operationKey)) return false;
   if ("input" in c)
@@ -85,7 +93,7 @@ export function identityActionExpected(v: unknown): v is IdentityActionExpected 
       typeof v.deploymentId === "string" &&
       /^[a-z0-9_]{1,128}$/.test(v.deploymentId) &&
       ["production", "staging", "sandbox"].includes(v.environment) &&
-      Object.values(identityWalletActions).includes(v.action) &&
+      [...Object.values(identityWalletActions), ...Object.values(identityStaffActions)].includes(v.action) &&
       hash(v.payloadHash)
     );
   } catch {
@@ -93,6 +101,7 @@ export function identityActionExpected(v: unknown): v is IdentityActionExpected 
   }
 }
 export function identityCommandAction(command: IdentityActionCommand) {
+  if (command.purpose !== "wallet_legacy_linkage") return staffCommandAction(command);
   return "input" in command ? identityWalletActions.intake : identityWalletActions.review;
 }
 export function identityActionPair(v: Record<string, any>): v is IdentityActionPair & Record<string, any> {
