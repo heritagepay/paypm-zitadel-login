@@ -65,6 +65,24 @@ export class WorkforceProvider {
     if (!result.sessionToken) throw new WorkforceStoreError("provider_token_unconfirmed");
     return { session: await this.read(row), token: result.sessionToken };
   }
+  async attachEnrollment(row: WorkforceChallenge, ceremonyHash: string) {
+    if (row.purpose !== "reviewed_enrollment" || !/^[a-f0-9]{64}$/.test(ceremonyHash))
+      throw new WorkforceStoreError("enrollment_purpose_mismatch");
+    const current = await this.read(row),
+      key = "paypm_workforce_enrollment_" + row.id;
+    const old = text(current.metadata[key]);
+    if (old && old !== ceremonyHash) throw new WorkforceStoreError("enrollment_metadata_changed");
+    if (!old)
+      await this.api.setSession({
+        sessionId: current.id,
+        checks: {},
+        metadata: { [key]: bytes(ceremonyHash) },
+        lifetime: sessionLifetime(undefined, current),
+      });
+    const final = await this.read(row);
+    if (text(final.metadata[key]) !== ceremonyHash) throw new WorkforceStoreError("enrollment_metadata_unconfirmed");
+    return final;
+  }
   async deliver(row: WorkforceChallenge) {
     const current = await this.read(row),
       result = await this.api.setSession({

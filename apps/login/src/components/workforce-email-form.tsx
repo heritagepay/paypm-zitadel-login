@@ -75,7 +75,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || cancelling || (flow ? expired || !/^\d{6}$/.test(code) : !emailValid)) return;
+    if (busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid)) return;
     const current = epoch.current;
     setBusy(true);
     setError(false);
@@ -176,7 +176,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
               autoCapitalize="none"
               spellCheck={false}
               maxLength={12}
-              pattern="[0-9]{6}"
+              pattern="[0-9]{8}"
               required
               disabled={cancelling}
               onChange={(e) => {
@@ -219,7 +219,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
             type="submit"
             className="w-full"
             variant={ButtonVariants.Primary}
-            disabled={busy || cancelling || (flow ? expired || !/^\d{6}$/.test(code) : !emailValid)}
+            disabled={busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid)}
           >
             {busy && <Spinner className="mr-2 h-5 w-5" />}
             {t(flow ? "verify" : "send")}

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readlink, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -119,12 +120,37 @@ describe("locked pnpm hoisted standalone dependency closure", () => {
     const f = await fixture();
     await includes(f);
     await copy(f);
-    const standaloneRequire = createRequire(join(f.standalone, "node_modules/.pnpm/node_modules/probe.cjs"));
+    // Vitest/Bun intercepts in-process createRequire resolution; qualify the actual copied runtime in isolation.
+    const probeFile = join(f.standalone, "node_modules/.pnpm/node_modules/probe.cjs");
+    await writeFile(
+      probeFile,
+      `const {createRequire}=require("node:module"),{realpathSync}=require("node:fs");const owningRequire=createRequire(__filename);console.log(JSON.stringify(${JSON.stringify(packages.map((pkg) => pkg.name))}.map(name=>({name,resolved:owningRequire.resolve(name),realpath:realpathSync(owningRequire.resolve(name)),value:owningRequire(name)}))));`,
+    );
+    const result = spawnSync(process.execPath, [probeFile], {
+      encoding: "utf8",
+      cwd: f.standalone,
+      env: {},
+      timeout: 5000,
+      maxBuffer: 4096,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.signal).toBeNull();
+    const loaded = JSON.parse(result.stdout) as unknown;
+    expect(Array.isArray(loaded)).toBe(true);
+    expect(loaded).toHaveLength(packages.length);
     for (const pkg of packages) {
       const link = join(f.standalone, "node_modules/.pnpm/node_modules", pkg.name);
       expect(await readlink(link)).toBe(pkg.target);
       expect(await realpath(link)).toBe(join(f.standalone, "node_modules/.pnpm", pkg.store, "node_modules", pkg.name));
-      expect(standaloneRequire(pkg.name)).toBe(pkg.name + "@" + pkg.version);
+      const rows = loaded as { name: string; resolved: string; realpath: string; value: string }[];
+      const matches = rows.filter((row) => row.name === pkg.name);
+      expect(matches).toHaveLength(1);
+      expect(Object.keys(matches[0]).sort()).toEqual(["name", "realpath", "resolved", "value"]);
+      const expectedEntry = join(f.standalone, "node_modules/.pnpm", pkg.store, "node_modules", pkg.name, "lib/index.cjs");
+      expect(matches[0].resolved).toBe(expectedEntry);
+      expect(matches[0].realpath).toBe(expectedEntry);
+      expect(matches[0].value).toBe(pkg.name + "@" + pkg.version);
     }
     for (const pkg of [...packages, ...runtimePackages])
       for (const name of ["package.json", "lib/index.cjs"])

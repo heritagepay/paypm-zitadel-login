@@ -225,7 +225,7 @@ export async function verifyWorkforceEmailOtp(command: {
     !policy?.emailOtpReady ||
     !operation(command.operationKey) ||
     typeof command.code !== "string" ||
-    !/^\d{6}$/.test(command.code)
+    !/^\d{8}$/.test(command.code)
   )
     return unavailable();
   try {

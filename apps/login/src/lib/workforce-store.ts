@@ -47,9 +47,11 @@ export interface WorkforceChallengeBinding {
   clientId: string;
   requestId: string;
   contact: string;
+  purpose?: "reviewed_enrollment";
 }
 export interface WorkforceChallenge {
   id: string;
+  purpose?: "login" | "reviewed_enrollment";
   operation_key: string;
   issuer: string;
   provider_subject: string;
@@ -148,14 +150,20 @@ export class WorkforceStore {
           previous.issuer !== input.issuer ||
           previous.provider_subject !== input.userId ||
           previous.client_id !== input.clientId ||
-          previous.request_id !== input.requestId
+          previous.request_id !== input.requestId ||
+          (previous.purpose ?? "login") !== (input.purpose ?? "login")
         )
           throw new WorkforceStoreError("challenge_binding_mismatch");
         await this.retire(tx, previous);
       }
-      const [row] = await tx<
-        WorkforceChallenge[]
-      >`INSERT INTO login_workforce_challenges(id,operation_key,issuer,provider_subject,client_id,request_id,contact_hash,request_hash,epoch) VALUES(${randomUUID()},${input.operationKey},${input.issuer},${input.userId},${input.clientId},${input.requestId},${contactHash},${requestHash},${epoch.epoch}) RETURNING *`;
+      const [row] =
+        input.purpose === "reviewed_enrollment"
+          ? await tx<
+              WorkforceChallenge[]
+            >`INSERT INTO login_workforce_challenges(id,operation_key,issuer,provider_subject,client_id,request_id,contact_hash,request_hash,epoch,purpose) VALUES(${randomUUID()},${input.operationKey},${input.issuer},${input.userId},${input.clientId},${input.requestId},${contactHash},${requestHash},${epoch.epoch},'reviewed_enrollment') RETURNING *`
+          : await tx<
+              WorkforceChallenge[]
+            >`INSERT INTO login_workforce_challenges(id,operation_key,issuer,provider_subject,client_id,request_id,contact_hash,request_hash,epoch) VALUES(${randomUUID()},${input.operationKey},${input.issuer},${input.userId},${input.clientId},${input.requestId},${contactHash},${requestHash},${epoch.epoch}) RETURNING *`;
       return row;
     });
   }
@@ -285,10 +293,22 @@ export class WorkforceStore {
       .sql`UPDATE login_workforce_attempts SET state='failed',completed_at=clock_timestamp() WHERE id=${attemptId} AND state='pending'`;
   }
   async verified(attemptId: string, verifiedAt: Date, absoluteExpiresAt: Date) {
+    return this.finishVerification(attemptId, verifiedAt, absoluteExpiresAt, "login");
+  }
+  async verifiedEnrollment(attemptId: string, verifiedAt: Date, expiresAt: Date) {
+    return this.finishVerification(attemptId, verifiedAt, expiresAt, "reviewed_enrollment");
+  }
+  private async finishVerification(
+    attemptId: string,
+    verifiedAt: Date,
+    absoluteExpiresAt: Date,
+    purpose: "login" | "reviewed_enrollment",
+  ) {
     return this.sql.begin(async (tx) => {
       const [reference] = await tx<WorkforceAttempt[]>`SELECT * FROM login_workforce_attempts WHERE id=${attemptId}`;
       if (!reference) throw new WorkforceStoreError("attempt_not_found");
       const row = await this.challenge(reference.challenge_id, tx, true);
+      if ((row.purpose ?? "login") !== purpose) throw new WorkforceStoreError("verification_purpose_mismatch");
       const [attempt] = await tx<
         WorkforceAttempt[]
       >`SELECT * FROM login_workforce_attempts WHERE id=${attemptId} FOR UPDATE`;
@@ -307,9 +327,20 @@ export class WorkforceStore {
       const [next] = await tx<
         WorkforceChallenge[]
       >`UPDATE login_workforce_challenges SET state='verified',verified_at=${verifiedAt} WHERE id=${row.id} RETURNING *`;
-      await tx`INSERT INTO login_workforce_admissions(provider_session_id,challenge_id,issuer,provider_subject,client_id,request_id,epoch,authentication_class,verified_at,absolute_expires_at) VALUES(${row.provider_session_id},${row.id},${row.issuer},${row.provider_subject},${row.client_id},${row.request_id},${row.epoch},'workforce_limited',${verifiedAt},${absoluteExpiresAt})`;
+      if (purpose === "login")
+        await tx`INSERT INTO login_workforce_admissions(provider_session_id,challenge_id,issuer,provider_subject,client_id,request_id,epoch,authentication_class,verified_at,absolute_expires_at) VALUES(${row.provider_session_id},${row.id},${row.issuer},${row.provider_subject},${row.client_id},${row.request_id},${row.epoch},'workforce_limited',${verifiedAt},${absoluteExpiresAt})`;
       return next;
     });
+  }
+  async currentEnrollmentChallenge(id: string) {
+    const row = await this.challenge(id);
+    await this.current(this.sql, row, false);
+    if (
+      row.purpose !== "reviewed_enrollment" ||
+      !["session_pending", "delivery_pending", "issued", "verified"].includes(row.state)
+    )
+      throw new WorkforceStoreError("enrollment_purpose_mismatch");
+    return row;
   }
   async admission(sessionId: string, userId: string, clientId: string, requestId: string): Promise<boolean> {
     const rows = await this

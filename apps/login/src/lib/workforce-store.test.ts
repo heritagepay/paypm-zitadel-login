@@ -17,6 +17,9 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await sql.unsafe(readFileSync(new URL("../../migrations/002_legacy_recovery_retirements.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/003_workforce_action_intents.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/007_identity_action_requests.sql", import.meta.url), "utf8"));
+    await sql.unsafe(
+      readFileSync(new URL("../../migrations/008_reviewed_workforce_enrollment.sql", import.meta.url), "utf8"),
+    );
     store = new WorkforceStore(sql, Buffer.alloc(32, 19));
   });
   afterEach(async () => {
@@ -331,5 +334,17 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await store.revoke(row.provider_session_id!);
     expect(await store.currentAdmission(binding)).toBeUndefined();
     expect(await store.pendingRevocations()).toEqual([{ provider_session_id: row.provider_session_id }]);
+  });
+  it("enrollment verification cannot enter ordinary login admission", async () => {
+    const row = await store.reserve({ ...input(), purpose: "reviewed_enrollment" });
+    await store.session(row.id, "888", "synthetic-token");
+    await store.issued(row.id);
+    const attempt = await store.attempt(row.id, randomUUID(), "12345678");
+    await expect(store.verified(attempt.id, new Date(), new Date(Date.now() + 100000))).rejects.toMatchObject({
+      code: "verification_purpose_mismatch",
+    });
+    await store.verifiedEnrollment(attempt.id, new Date(), new Date(Date.now() + 100000));
+    expect(await store.admission("888", row.provider_subject, row.client_id, row.request_id)).toBe(false);
+    expect(await sql`SELECT * FROM login_workforce_admissions WHERE challenge_id=${row.id}`).toHaveLength(0);
   });
 });
