@@ -17,6 +17,7 @@ const versions = [
   "005_operations_logouts",
   "006_identity_logouts",
   "007_identity_action_requests",
+  "008_reviewed_workforce_enrollment",
 ];
 async function run(connection: string) {
   return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
@@ -69,7 +70,7 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
       SELECT version,checksum,applied_at::text AS applied_at FROM login_workforce_migrations ORDER BY version`;
   }
 
-  it("serializes concurrent initial runs, applies all seven checksums once and keeps replay timestamps", async () => {
+  it("serializes concurrent initial runs, applies all eight checksums once and keeps replay timestamps", async () => {
     const results = await Promise.all([run(connection), run(connection)]);
     expect(results.map((result) => result.status)).toEqual([0, 0]);
     const initial = await ledger();

@@ -88,14 +88,28 @@ describe("workforce email-code experience", () => {
     expect(input).toHaveFocus();
     expect(input).toHaveAttribute("autocomplete", "one-time-code");
     expect(input).toHaveAttribute("inputmode", "numeric");
-    fireEvent.change(input, { target: { value: "123-456" } });
-    expect(input).toHaveValue("123456");
+    fireEvent.change(input, { target: { value: "1234-5678" } });
+    expect(input).toHaveValue("12345678");
     expect(verifyWorkforceEmailOtp).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.verify }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/callback"));
     expect(verifyWorkforceEmailOtp).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "provider-session", requestId: "oidc_exact", code: "123456" }),
+      expect.objectContaining({ sessionId: "provider-session", requestId: "oidc_exact", code: "12345678" }),
     );
+  });
+  it("rejects six-digit, short, long and nonnumeric input without invoking verification", async () => {
+    mount();
+    await send();
+    const input = screen.getByLabelText(new RegExp(en.workforceEmail.codeLabel));
+    expect(input).toHaveAttribute("pattern", "[0-9]{8}");
+    for (const value of ["123456", "1234567", "123456789", "1234567A"]) {
+      fireEvent.change(input, { target: { value } });
+      expect(screen.getByRole("button", { name: en.workforceEmail.verify })).toBeDisabled();
+      fireEvent.submit(input.closest("form")!);
+      expect(verifyWorkforceEmailOtp).not.toHaveBeenCalled();
+    }
+    fireEvent.change(input, { target: { value: "12345678" } });
+    expect(screen.getByRole("button", { name: en.workforceEmail.verify })).toBeEnabled();
   });
   it("keeps truthful resend timing and preserves the resend operation after an uncertain result", async () => {
     vi.useFakeTimers();
@@ -124,7 +138,7 @@ describe("workforce email-code experience", () => {
           finish = resolve;
         }),
     );
-    fireEvent.change(screen.getByLabelText(new RegExp(en.workforceEmail.codeLabel)), { target: { value: "123456" } });
+    fireEvent.change(screen.getByLabelText(new RegExp(en.workforceEmail.codeLabel)), { target: { value: "12345678" } });
     fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.verify }));
     fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.changeEmail }));
     await screen.findByLabelText(new RegExp(en.workforceEmail.emailLabel));
@@ -141,7 +155,7 @@ describe("workforce email-code experience", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.send }));
     });
-    fireEvent.change(screen.getByLabelText(new RegExp(en.workforceEmail.codeLabel)), { target: { value: "123456" } });
+    fireEvent.change(screen.getByLabelText(new RegExp(en.workforceEmail.codeLabel)), { target: { value: "12345678" } });
     await act(() => vi.advanceTimersByTime(301000));
     expect(screen.getByText(en.workforceEmail.expired)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: en.workforceEmail.verify })).toBeDisabled();

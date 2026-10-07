@@ -41,3 +41,13 @@ describe("signed workforce flow", () => {
     expect(() => encodeWorkforceState(flow())).toThrow();
   });
 });
+
+describe("reviewed enrollment flow isolation", () => {
+  it("binds exact operation to its distinct signed purpose", () => {
+    const enrollmentId = "01234567-1234-4234-9234-0123456789ab";
+    const enrolled = { ...flow(), purpose: "reviewed-workforce-enrollment" as const, enrollmentId };
+    expect(decodeWorkforceState(encodeWorkforceState(enrolled), now)).toEqual(enrolled);
+    expect(decodeWorkforceState(encodeWorkforceState({ ...enrolled, enrollmentId: "not-operation" }), now)).toBeUndefined();
+    expect(decodeWorkforceState(encodeWorkforceState({ ...flow(), enrollmentId }), now)).toBeUndefined();
+  });
+});

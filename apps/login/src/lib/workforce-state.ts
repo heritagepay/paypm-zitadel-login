@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { FRESH_PASSKEY_MS, WEB_SESSION_ABSOLUTE_MS } from "./authentication-policy";
 
 export type WorkforceState = {
-  purpose: "email-challenge" | "limited-admission" | "passkey-challenge";
+  purpose: "email-challenge" | "limited-admission" | "passkey-challenge" | "reviewed-workforce-enrollment";
   sessionId: string;
   userId: string;
   clientId: string;
@@ -13,6 +13,7 @@ export type WorkforceState = {
   issuedAt: number;
   expiresAt: number;
   challengeId?: string;
+  enrollmentId?: string;
 };
 
 function flowKey(): Buffer {
@@ -37,7 +38,16 @@ export function decodeWorkforceState(value: string | undefined, now = Date.now()
     const received = Buffer.from(signature, "base64url");
     if (received.length !== expected.length || !timingSafeEqual(received, expected)) return undefined;
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as WorkforceState;
-    if (!["email-challenge", "limited-admission", "passkey-challenge"].includes(state.purpose)) return undefined;
+    if (
+      !["email-challenge", "limited-admission", "passkey-challenge", "reviewed-workforce-enrollment"].includes(state.purpose)
+    )
+      return undefined;
+    if (
+      state.purpose === "reviewed-workforce-enrollment" &&
+      (!state.enrollmentId || !/^[0-9a-f-]{36}$/.test(state.enrollmentId))
+    )
+      return undefined;
+    if (state.purpose !== "reviewed-workforce-enrollment" && state.enrollmentId !== undefined) return undefined;
     if (state.challengeId !== undefined && !/^[0-9a-f-]{36}$/.test(state.challengeId)) return undefined;
     if (
       ![state.sessionId, state.userId, state.clientId, state.requestId].every(

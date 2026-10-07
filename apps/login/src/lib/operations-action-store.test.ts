@@ -22,6 +22,7 @@ suite("Operations purpose action evidence (real PostgreSQL)", () => {
     await sql.unsafe(readFileSync(new URL("../../migrations/001_workforce_auth.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/003_workforce_action_intents.sql", import.meta.url), "utf8"));
     await sql.unsafe(readFileSync(new URL("../../migrations/004_operations_action_requests.sql", import.meta.url), "utf8"));
+    await sql.unsafe(readFileSync(new URL("../../migrations/007_identity_action_requests.sql", import.meta.url), "utf8"));
     base = new WorkforceStore(sql, Buffer.alloc(32, 19));
     store = new OperationsActionStore(sql, Buffer.alloc(32, 20));
   });

@@ -68,7 +68,7 @@ const verify = () => ({
   sessionId: "provider-session",
   requestId: "oidc_request",
   operationKey: randomUUID(),
-  code: "123456",
+  code: "12345678",
 });
 beforeEach(() => {
   vi.resetAllMocks();
@@ -246,7 +246,7 @@ describe("provider-owned workforce email OTP with durable orchestration", () => 
     const result = await verifyWorkforceEmailOtp(verify());
     expect(result).toHaveProperty("redirect");
     const checks = api.setSession.mock.calls.find(([data]: any) => data.checks?.otpEmail);
-    expect(checks[0].checks.otpEmail.code).toBe("123456");
+    expect(checks[0].checks.otpEmail.code).toBe("12345678");
     expect(store.attempt.mock.invocationCallOrder[0]).toBeLessThan(api.setSession.mock.invocationCallOrder[1]);
     expect(store.verified).toHaveBeenCalled();
     expect(addSessionToCookie).toHaveBeenCalled();
@@ -361,4 +361,14 @@ describe("provider-owned workforce email OTP with durable orchestration", () => 
     expect(await cancelWorkforceEmailOtp({ requestId: row.request_id, sessionId: current.id })).toHaveProperty("error");
     expect(store.cancelChallenge).not.toHaveBeenCalled();
   });
+});
+
+describe("native configured eight-digit email OTP", () => {
+  it.each(["123456", "1234567", "123456789", "ABCDEFGH"])(
+    "rejects wrong native code shape %s before provider verification",
+    async (code) => {
+      expect(await verifyWorkforceEmailOtp({ ...verify(), code })).toHaveProperty("error");
+      expect(api.setSession).not.toHaveBeenCalled();
+    },
+  );
 });

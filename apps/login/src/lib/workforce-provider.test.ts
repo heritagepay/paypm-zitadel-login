@@ -132,3 +132,39 @@ describe("pure operation intent inspection", () => {
     },
   );
 });
+
+describe("native reviewed enrollment metadata", () => {
+  it("attaches exact ceremony hash only to an owned enrollment session, then reads native acceptance", async () => {
+    const record = session(),
+      id = randomUUID();
+    record.metadata["paypm_workforce_challenge" as keyof typeof record.metadata] = new TextEncoder().encode(id);
+    const row: any = {
+      id,
+      purpose: "reviewed_enrollment",
+      provider_session_id: record.id,
+      provider_subject: "700",
+      issuer: "https://auth.paypm.test",
+      client_id: "staff",
+      epoch: "0",
+    };
+    const getSession = vi.fn(async () => ({ session: record })),
+      setSession = vi.fn(async (input: any) => {
+        Object.assign(record.metadata, input.metadata);
+        return {};
+      });
+    const provider = new WorkforceProvider({ getSession, setSession } as any, "300");
+    await provider.attachEnrollment(row, "a".repeat(64));
+    expect(setSession).toHaveBeenCalledOnce();
+    expect(setSession.mock.calls[0][0].metadata).toEqual({
+      ["paypm_workforce_enrollment_" + id]: new TextEncoder().encode("a".repeat(64)),
+    });
+    await provider.attachEnrollment(row, "a".repeat(64));
+    expect(setSession).toHaveBeenCalledOnce();
+    await expect(provider.attachEnrollment(row, "b".repeat(64))).rejects.toMatchObject({
+      code: "enrollment_metadata_changed",
+    });
+    await expect(provider.attachEnrollment({ ...row, purpose: "login" }, "a".repeat(64))).rejects.toMatchObject({
+      code: "enrollment_purpose_mismatch",
+    });
+  });
+});
