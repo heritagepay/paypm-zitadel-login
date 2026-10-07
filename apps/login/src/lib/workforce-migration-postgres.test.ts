@@ -18,6 +18,7 @@ const versions = [
   "006_identity_logouts",
   "007_identity_action_requests",
   "008_reviewed_workforce_enrollment",
+  "009_reviewed_workforce_profile_delivery",
 ];
 async function run(connection: string) {
   return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
@@ -70,7 +71,7 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
       SELECT version,checksum,applied_at::text AS applied_at FROM login_workforce_migrations ORDER BY version`;
   }
 
-  it("serializes concurrent initial runs, applies all eight checksums once and keeps replay timestamps", async () => {
+  it("serializes concurrent initial runs, applies all nine checksums once and keeps replay timestamps", async () => {
     const results = await Promise.all([run(connection), run(connection)]);
     expect(results.map((result) => result.status)).toEqual([0, 0]);
     const initial = await ledger();
@@ -99,6 +100,46 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
     expect((await ledger()).slice(0, 6)).toEqual(initial);
     expect(await sql`SELECT * FROM login_workforce_epochs`).toEqual(previous);
     expect(await sql`SELECT request_hash FROM login_identity_logouts`).toHaveLength(0);
+  });
+
+  it("upgrades populated 008 to 009 preserving original custody rows and microsecond ledger timestamps", async () => {
+    await sql.begin(async (tx) => {
+      await tx`CREATE TABLE login_workforce_migrations(version text PRIMARY KEY,checksum char(64) NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`;
+      for (const version of versions.slice(0, 8)) {
+        const migration = await source(version);
+        await tx.unsafe(migration.body);
+        await tx`INSERT INTO login_workforce_migrations(version,checksum) VALUES(${version},${migration.checksum})`;
+      }
+      await tx`INSERT INTO login_workforce_epochs(issuer,provider_subject,epoch) VALUES('https://auth.fixture.invalid','fixture-subject',42)`;
+      await tx`INSERT INTO login_reviewed_workforce_enrollments(enrollment_id,binding_hash,binding,issuer,provider_subject,client_id,request_id,epoch,operation_key,expires_at)
+        VALUES('11111111-1111-4111-8111-111111111111',${"a".repeat(64)},'{"synthetic":true}','https://auth.fixture.invalid','fixture-subject','fixture-client','oidc_fixture',42,'22222222-2222-4222-8222-222222222222',clock_timestamp()+interval '4 minutes')`;
+      await tx`INSERT INTO login_reviewed_workforce_profile_attempts(id,operation_key,enrollment_id,code_hash)
+        VALUES('33333333-3333-4333-8333-333333333333','44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111',${"b".repeat(64)})`;
+      await tx`INSERT INTO login_reviewed_workforce_enrollment_retirements(enrollment_id,reason) VALUES('11111111-1111-4111-8111-111111111111','cancelled')`;
+    });
+    const beforeLedger = await ledger();
+    const before = await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_enrollments e`;
+    const attempts = await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_profile_attempts e`;
+    const retirements = await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_enrollment_retirements e`;
+    expect((await run(connection)).status).toBe(0);
+    expect((await ledger()).slice(0, 8)).toEqual(beforeLedger);
+    expect(await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_enrollments e`).toEqual(before);
+    expect(await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_profile_attempts e`).toEqual(attempts);
+    expect(await sql`SELECT row_to_json(e) AS row FROM login_reviewed_workforce_enrollment_retirements e`).toEqual(
+      retirements,
+    );
+    for (const table of [
+      "login_reviewed_workforce_profile_deliveries",
+      "login_reviewed_workforce_profile_delivery_claims",
+      "login_reviewed_workforce_profile_delivery_outcomes",
+      "login_workforce_admissions",
+    ]) {
+      expect(await sql.unsafe(`SELECT count(*)::int AS count FROM ${table}`)).toEqual([{ count: 0 }]);
+    }
+    const after = await ledger();
+    expect(after).toHaveLength(9);
+    expect((await run(connection)).status).toBe(0);
+    expect(await ledger()).toEqual(after);
   });
 
   it("rejects a changed applied006 checksum and leaves committed rows and ledger unchanged", async () => {

@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync, randomUUID } from "node:crypto";
+import type { Sql, TransactionSql } from "postgres";
 import "server-only";
 import { workforceAssertionHash } from "./workforce-assertion";
 import type { EnrollmentProjection } from "./workforce-enrollment-identity-client";
@@ -33,6 +34,25 @@ export interface EnrollmentOriginal {
   created_at: Date;
   expires_at: Date;
   retirement?: string;
+}
+export interface ProfileDelivery {
+  id: string;
+  enrollment_id: string;
+  operation_key: string;
+  binding_hash: string;
+  epoch: string;
+  contact_hash: string;
+  request_hash: string;
+  previous_id: string | null;
+  created_at: Date;
+  code_expires_at: Date;
+  claimed?: boolean;
+  outcome?: "accepted" | "unknown";
+}
+export interface ProfileDeliveryAcknowledgement {
+  sequence: string;
+  changeAt: string;
+  resourceOwner: string;
 }
 /** Adds only appointment associations; OTP/session/quotas/sealing/epoch remain WorkforceStore-owned. */
 export class WorkforceEnrollmentStore {
@@ -76,8 +96,8 @@ export class WorkforceEnrollmentStore {
       return row;
     });
   }
-  async original(id: string, allowCompleted = false, allowCancelled = false) {
-    const [r] = await this.base.sql<
+  async original(id: string, allowCompleted = false, allowCancelled = false, sql: Sql | TransactionSql = this.base.sql) {
+    const [r] = await sql<
       EnrollmentOriginal[]
     >`SELECT o.*,r.reason retirement FROM login_reviewed_workforce_enrollments o JOIN login_workforce_epochs e ON e.issuer=o.issuer AND e.provider_subject=o.provider_subject AND e.epoch=o.epoch LEFT JOIN login_reviewed_workforce_enrollment_retirements r ON r.enrollment_id=o.enrollment_id WHERE o.enrollment_id=${id} AND o.expires_at>clock_timestamp()`;
     if (
@@ -159,6 +179,105 @@ export class WorkforceEnrollmentStore {
       throw new WorkforceStoreError("enrollment_ceremony_changed");
     return rows[0].ceremony;
   }
+  /** Immutable native send intent; reservation itself conveys no verification or permission. */
+  async reserveProfileDelivery(p: EnrollmentProjection, operationKey: string, template: string, previousId?: string) {
+    const contactHash = this.base.emailQuotaHash(p.issuer, p.email);
+    return this.base.sql.begin(async (tx) => {
+      // Same contact lock/order as Session OTP; prevents cross-stage quota races.
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${contactHash},0))`;
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${p.enrollmentId},0))`;
+      await tx`SELECT epoch FROM login_workforce_epochs WHERE issuer=${p.issuer} AND provider_subject=${p.providerSubject} FOR UPDATE`;
+      const original = await this.original(p.enrollmentId, false, false, tx);
+      this.matches(original, p);
+      if (p.emailVerified) throw new WorkforceStoreError("profile_already_verified");
+      const requestHash = workforceAssertionHash({
+        enrollmentId: p.enrollmentId,
+        bindingHash: original.binding_hash,
+        epoch: String(original.epoch),
+        templateHash: workforceAssertionHash(template),
+        previousId: previousId ?? null,
+      });
+      const [old] = await tx<
+        ProfileDelivery[]
+      >`SELECT * FROM login_reviewed_workforce_profile_deliveries WHERE operation_key=${operationKey}`;
+      if (old) {
+        if (old.request_hash !== requestHash) throw new WorkforceStoreError("idempotency_conflict");
+        await this.currentProfileDelivery(p.enrollmentId, old.id, tx);
+        return old;
+      }
+      const [current] = await tx<
+        ProfileDelivery[]
+      >`SELECT d.* FROM login_reviewed_workforce_profile_deliveries d WHERE d.enrollment_id=${p.enrollmentId} AND NOT EXISTS(SELECT 1 FROM login_reviewed_workforce_profile_deliveries n WHERE n.previous_id=d.id)`;
+      if (previousId) {
+        if (!current || current.id !== previousId) throw new WorkforceStoreError("profile_delivery_changed");
+        await this.currentProfileDelivery(p.enrollmentId, previousId, tx);
+      } else if (current) return current; // repeated original start observes; never creates a new send
+      await this.base.assertEmailQuota(tx, contactHash);
+      const [row] = await tx<
+        ProfileDelivery[]
+      >`INSERT INTO login_reviewed_workforce_profile_deliveries(id,enrollment_id,operation_key,binding_hash,epoch,contact_hash,request_hash,previous_id) VALUES(${randomUUID()},${p.enrollmentId},${operationKey},${original.binding_hash},${original.epoch},${contactHash},${requestHash},${previousId ?? null}) RETURNING *`;
+      return row;
+    });
+  }
+  async currentProfileDelivery(id: string, deliveryId?: string, sql: Sql | TransactionSql = this.base.sql) {
+    const original = await this.original(id, false, false, sql);
+    const [row] = await sql<
+      ProfileDelivery[]
+    >`SELECT d.*,c.delivery_id IS NOT NULL claimed,o.outcome FROM login_reviewed_workforce_profile_deliveries d LEFT JOIN login_reviewed_workforce_profile_delivery_claims c ON c.delivery_id=d.id LEFT JOIN login_reviewed_workforce_profile_delivery_outcomes o ON o.delivery_id=d.id WHERE d.enrollment_id=${id} AND NOT EXISTS(SELECT 1 FROM login_reviewed_workforce_profile_deliveries n WHERE n.previous_id=d.id)`;
+    if (deliveryId && row?.id !== deliveryId) throw new WorkforceStoreError("profile_delivery_changed");
+    if (row && (row.binding_hash !== original.binding_hash || String(row.epoch) !== String(original.epoch)))
+      throw new WorkforceStoreError("profile_delivery_changed");
+    return row;
+  }
+  async claimProfileDelivery(id: string, deliveryId: string) {
+    return this.base.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${id},0))`;
+      await this.currentProfileDelivery(id, deliveryId, tx);
+      const inserted =
+        await tx`INSERT INTO login_reviewed_workforce_profile_delivery_claims(delivery_id) VALUES(${deliveryId}) ON CONFLICT DO NOTHING RETURNING delivery_id`;
+      return inserted.length === 1;
+    });
+  }
+  async recordProfileDelivery(id: string, deliveryId: string, ack?: ProfileDeliveryAcknowledgement) {
+    return this.base.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${id},0))`;
+      await this.currentProfileDelivery(id, deliveryId, tx);
+      const original = await this.original(id, false, false, tx);
+      if (
+        ack &&
+        (!/^[1-9]\d{0,39}$/.test(ack.sequence) ||
+          !Number.isFinite(Date.parse(ack.changeAt)) ||
+          ack.resourceOwner !== original.binding.organizationId)
+      )
+        throw new WorkforceStoreError("profile_delivery_ack_changed");
+      await tx`INSERT INTO login_reviewed_workforce_profile_delivery_outcomes(delivery_id,outcome,native_sequence,native_change_at,native_resource_owner) VALUES(${deliveryId},${ack ? "accepted" : "unknown"},${ack?.sequence ?? null},${ack ? new Date(ack.changeAt) : null},${ack?.resourceOwner ?? null}) ON CONFLICT DO NOTHING`;
+      const [outcome] = await tx<
+        {
+          outcome: string;
+          native_sequence: string | null;
+          native_change_at: Date | null;
+          native_resource_owner: string | null;
+        }[]
+      >`SELECT * FROM login_reviewed_workforce_profile_delivery_outcomes WHERE delivery_id=${deliveryId}`;
+      if (
+        outcome.outcome !== (ack ? "accepted" : "unknown") ||
+        outcome.native_sequence !== (ack?.sequence ?? null) ||
+        outcome.native_change_at?.getTime() !== (ack ? Date.parse(ack.changeAt) : undefined) ||
+        outcome.native_resource_owner !== (ack?.resourceOwner ?? null)
+      )
+        throw new WorkforceStoreError("profile_delivery_ack_changed");
+    });
+  }
+  async profileDeliveryProjection(id: string) {
+    const row = await this.currentProfileDelivery(id);
+    if (!row) return undefined;
+    return {
+      state: row.outcome ?? (row.claimed ? ("unknown" as const) : ("pending" as const)),
+      attemptId: row.id,
+      resendAt: new Date(row.created_at.getTime() + 60000).toISOString(),
+      codeExpiresAt: row.code_expires_at.toISOString(),
+    };
+  }
   async profileAttempt(id: string, operationKey: string, code: string) {
     await this.original(id);
     const codeHash = this.index("paypm-workforce-profile-verification-v1", id + ":" + code);
@@ -181,8 +300,11 @@ export class WorkforceEnrollmentStore {
   }
   async retire(id: string, reason: "cancelled" | "completed") {
     await this.original(id, true, reason === "cancelled");
-    await this.base
-      .sql`INSERT INTO login_reviewed_workforce_enrollment_retirements(enrollment_id,reason) VALUES(${id},${reason}) ON CONFLICT DO NOTHING`;
+    await this.base.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${id},0))`;
+      await this.original(id, true, reason === "cancelled", tx);
+      await tx`INSERT INTO login_reviewed_workforce_enrollment_retirements(enrollment_id,reason) VALUES(${id},${reason}) ON CONFLICT DO NOTHING`;
+    });
     const [old] = await this.base.sql<
       { reason: string }[]
     >`SELECT reason FROM login_reviewed_workforce_enrollment_retirements WHERE enrollment_id=${id}`;

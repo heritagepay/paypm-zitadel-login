@@ -3,6 +3,7 @@ import {
   cancelReviewedWorkforceEnrollment,
   completeReviewedWorkforceEnrollment,
   inspectReviewedWorkforceEnrollmentEntry,
+  replaceReviewedWorkforceProfileEmail,
   resendReviewedWorkforceEnrollment,
   startReviewedWorkforceEnrollment,
   verifyReviewedWorkforceEnrollment,
@@ -21,6 +22,7 @@ vi.mock("@/lib/server/workforce-enrollment", () => ({
   completeReviewedWorkforceEnrollment: vi.fn(),
   inspectReviewedWorkforceEnrollmentEntry: vi.fn(),
   resendReviewedWorkforceEnrollment: vi.fn(),
+  replaceReviewedWorkforceProfileEmail: vi.fn(),
   startReviewedWorkforceEnrollment: vi.fn(),
   verifyReviewedWorkforceEnrollment: vi.fn(),
   verifyReviewedWorkforceProfileEmail: vi.fn(),
@@ -390,5 +392,119 @@ describe("workforce enrollment server page", () => {
     expect(inspectReviewedWorkforceEnrollmentEntry).not.toHaveBeenCalled();
     expect(startReviewedWorkforceEnrollment).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: en.workforceEnrollment.unavailableTitle })).toBeInTheDocument();
+  });
+});
+
+describe("profile request accepted/unknown/explicit replacement", () => {
+  const delivery = (state: "accepted" | "unknown" = "accepted") => ({
+    ...profile,
+    expiresAt: new Date(Date.now() + 240000).toISOString(),
+    profileDelivery: {
+      state,
+      attemptId: challengeId,
+      resendAt: new Date(Date.now() + 60000).toISOString(),
+      codeExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  it.each(["fr", "en"])("unknown %s keeps received-code Verify, no send/readback loop or inbox claim", async (locale) => {
+    mount(delivery("unknown"), locale);
+    const copy = locale === "fr" ? fr.workforceEnrollment : en.workforceEnrollment;
+    expect(screen.getByRole("status")).toHaveTextContent(copy.profileRequestUnknown);
+    expect(screen.queryByText(copy.profileRequestAccepted)).toBeNull();
+    const input = change("ABC123", copy.profileCodeLabel);
+    expect(input).toBeEnabled();
+    expect(screen.getByRole("button", { name: copy.profileSubmit })).toBeEnabled();
+    expect(startReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+    expect(replaceReviewedWorkforceProfileEmail).not.toHaveBeenCalled();
+    expect(inspectReviewedWorkforceEnrollmentEntry).not.toHaveBeenCalled();
+    await click(copy.profileSubmit);
+    expect(verifyReviewedWorkforceProfileEmail).toHaveBeenCalledOnce();
+  });
+  it("accepted feedback is command-only; explicit replacement waits deadline and passes original attempt once", async () => {
+    vi.useFakeTimers();
+    mount(delivery());
+    change("ABC123", en.workforceEnrollment.profileCodeLabel);
+    expect(screen.getByRole("status")).toHaveTextContent(en.workforceEnrollment.profileRequestAccepted);
+    expect(screen.getByRole("button", { name: "New code in 01:00" })).toBeDisabled();
+    await act(() => vi.advanceTimersByTime(61000));
+    expect(screen.getByText(en.workforceEnrollment.profileReplacementConsequence)).toBeInTheDocument();
+    const pending = deferred<any>();
+    vi.mocked(replaceReviewedWorkforceProfileEmail).mockReturnValue(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: en.workforceEnrollment.profileReplace }));
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.profileRequesting })).toBeDisabled();
+    expect(screen.getByLabelText(en.workforceEnrollment.profileCodeLabel)).toBeDisabled();
+    expect(replaceReviewedWorkforceProfileEmail).toHaveBeenCalledWith({
+      operationId,
+      attemptId: challengeId,
+      operationKey: expect.any(String),
+    });
+    const next = delivery();
+    next.profileDelivery.attemptId = secondChallengeId;
+    await act(() => pending.resolve(next));
+    expect(screen.getByLabelText(en.workforceEnrollment.profileCodeLabel)).toHaveValue("");
+    expect(replaceReviewedWorkforceProfileEmail).toHaveBeenCalledOnce();
+  });
+  it("unknown replacement preserves typed code, new server attempt and received-code verification", async () => {
+    vi.useFakeTimers();
+    mount(delivery());
+    change("ABC123", en.workforceEnrollment.profileCodeLabel);
+    await act(() => vi.advanceTimersByTime(61000));
+    const next = delivery("unknown");
+    next.profileDelivery.attemptId = secondChallengeId;
+    vi.mocked(replaceReviewedWorkforceProfileEmail).mockResolvedValue(next);
+    await click(en.workforceEnrollment.profileReplace);
+    expect(screen.getByRole("status")).toHaveTextContent(en.workforceEnrollment.profileRequestUnknown);
+    expect(screen.getByLabelText(en.workforceEnrollment.profileCodeLabel)).toHaveValue("ABC123");
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.profileSubmit })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "New code in 01:00" })).toBeDisabled();
+  });
+  it("lost replacement reply retains deliberate Verify but prevents another send until original custody reread", async () => {
+    vi.useFakeTimers();
+    mount(delivery());
+    change("ABC123", en.workforceEnrollment.profileCodeLabel);
+    await act(() => vi.advanceTimersByTime(61000));
+    vi.mocked(replaceReviewedWorkforceProfileEmail).mockRejectedValue(new Error("lost"));
+    await click(en.workforceEnrollment.profileReplace);
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.profileSubmit })).toBeEnabled();
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.profileReplace })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(en.workforceEnrollment.profileRequestUnknown);
+    expect(screen.queryByText(en.workforceEnrollment.profileRequestAccepted)).toBeNull();
+    vi.mocked(inspectReviewedWorkforceEnrollmentEntry).mockResolvedValue(delivery("unknown"));
+    await click(en.workforceEnrollment.check);
+    expect(screen.getByLabelText(en.workforceEnrollment.profileCodeLabel)).toHaveValue("ABC123");
+    expect(replaceReviewedWorkforceProfileEmail).toHaveBeenCalledOnce();
+  });
+  it.each(["fr", "en"])(
+    "%s original expiry blocks native-valid1h code/replacement without claiming code expiry",
+    async (locale) => {
+      vi.useFakeTimers();
+      const original = delivery("unknown"),
+        mounted = mount(original);
+      change("ABC123", en.workforceEnrollment.profileCodeLabel);
+      const messages = locale === "fr" ? fr.workforceEnrollment : en.workforceEnrollment;
+      mounted.rerender(tree(original, locale));
+      expect(screen.getByLabelText(messages.profileCodeLabel)).toHaveValue("ABC123");
+      await act(() => vi.advanceTimersByTime(241000));
+      expect(Date.parse(original.profileDelivery.codeExpiresAt)).toBeGreaterThan(Date.now());
+      expect(screen.getByText(messages.profileRequestExpired)).toBeInTheDocument();
+      expect(screen.queryByText(messages.expired)).toBeNull();
+      expect(screen.getByRole("button", { name: messages.profileSubmit })).toBeDisabled();
+      expect(screen.getByRole("button", { name: messages.profileReplace })).toBeDisabled();
+      expect(replaceReviewedWorkforceProfileEmail).not.toHaveBeenCalled();
+      expect(verifyReviewedWorkforceProfileEmail).not.toHaveBeenCalled();
+    },
+  );
+  it("cancellation fences late replacement projection and never claims delivered or verified", async () => {
+    vi.useFakeTimers();
+    mount(delivery());
+    await act(() => vi.advanceTimersByTime(61000));
+    const pending = deferred<any>();
+    vi.mocked(replaceReviewedWorkforceProfileEmail).mockReturnValue(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: en.workforceEnrollment.profileReplace }));
+    await click(en.workforceEnrollment.cancel);
+    await act(() => pending.resolve(delivery()));
+    expect(screen.getByRole("heading", { name: en.workforceEnrollment.cancelledTitle })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(verifyReviewedWorkforceProfileEmail).not.toHaveBeenCalled();
   });
 });
