@@ -20,6 +20,9 @@ suite("Login-owned durable workforce authentication (real PostgreSQL)", () => {
     await sql.unsafe(
       readFileSync(new URL("../../migrations/008_reviewed_workforce_enrollment.sql", import.meta.url), "utf8"),
     );
+    await sql.unsafe(
+      readFileSync(new URL("../../migrations/009_reviewed_workforce_profile_delivery.sql", import.meta.url), "utf8"),
+    );
     store = new WorkforceStore(sql, Buffer.alloc(32, 19));
   });
   afterEach(async () => {

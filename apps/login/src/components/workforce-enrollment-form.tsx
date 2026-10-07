@@ -4,6 +4,7 @@ import {
   cancelReviewedWorkforceEnrollment,
   completeReviewedWorkforceEnrollment,
   inspectReviewedWorkforceEnrollmentEntry,
+  replaceReviewedWorkforceProfileEmail,
   resendReviewedWorkforceEnrollment,
   startReviewedWorkforceEnrollment,
   verifyReviewedWorkforceEnrollment,
@@ -37,8 +38,14 @@ type View = {
   challengeId?: string;
   expiresAt?: string;
   resendAt?: string;
+  profileDelivery?: {
+    state: "pending" | "accepted" | "unknown";
+    attemptId: string;
+    resendAt: string;
+    codeExpiresAt: string;
+  };
 };
-type Action = "start" | "profile" | "verify" | "resend" | "complete" | "cancel" | "inspect";
+type Action = "start" | "profile" | "verify" | "resend" | "complete" | "cancel" | "inspect" | "replaceProfile";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const request = /^oidc_[A-Za-z0-9_-]{1,480}$/;
 const phases: Phase[] = [
@@ -73,6 +80,34 @@ function projection(value: unknown, previous?: View): View | undefined {
     email: typeof email === "string" ? email : undefined,
     requestId: typeof requestId === "string" ? requestId : undefined,
   };
+  if (state === "profile_email_verification_pending") {
+    if (fields.expiresAt !== undefined) {
+      if (typeof fields.expiresAt !== "string" || !Number.isFinite(Date.parse(fields.expiresAt))) return undefined;
+      result.expiresAt = fields.expiresAt;
+    }
+    if (fields.profileDelivery !== undefined) {
+      const d = fields.profileDelivery as Record<string, unknown>;
+      if (
+        !d ||
+        typeof d !== "object" ||
+        !["pending", "accepted", "unknown"].includes(d.state as string) ||
+        typeof d.attemptId !== "string" ||
+        !uuid.test(d.attemptId) ||
+        typeof d.resendAt !== "string" ||
+        !Number.isFinite(Date.parse(d.resendAt)) ||
+        typeof d.codeExpiresAt !== "string" ||
+        !Number.isFinite(Date.parse(d.codeExpiresAt))
+      )
+        return undefined;
+      result.profileDelivery = {
+        state: d.state as "pending" | "accepted" | "unknown",
+        attemptId: d.attemptId,
+        resendAt: d.resendAt,
+        codeExpiresAt: d.codeExpiresAt,
+      };
+      result.resendAt = d.resendAt;
+    }
+  }
   if (state === "otp_pending" || state === "identity_link_pending") {
     if (
       typeof fields.challengeId !== "string" ||
@@ -95,6 +130,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   const [view, setView] = useState<View | undefined>(() => projection(entry));
   const [code, setCode] = useState("");
   const [unconfirmed, setUnconfirmed] = useState(!projection(entry));
+  const [profileSendUnknown, setProfileSendUnknown] = useState(false);
   const [busy, setBusy] = useState<Action | undefined>();
   const [now, setNow] = useState(Date.now);
   const epoch = useRef(0);
@@ -110,7 +146,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   const otp = state === "otp_pending";
   const completed = state === "enrollment_completed_access_pending";
   const terminal = completed || state === "cancelled";
-  const expired = otp && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
+  const expired = (otp || profile) && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
   const remaining = view?.resendAt ? Math.max(0, Math.ceil((Date.parse(view.resendAt) - now) / 1000)) : 0;
   const currentCode = formattedCode(code);
   const codeValid = profile ? /^[A-Z0-9]{6}$/.test(currentCode) : /^\d{8}$/.test(currentCode);
@@ -150,10 +186,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   }, []);
 
   useEffect(() => {
-    if (!otp) return;
+    if (!otp && !profile) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [otp]);
+  }, [otp, profile]);
 
   useEffect(() => {
     if (profile || otp) input.current?.focus();
@@ -179,7 +215,8 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
       if (!mounted.current || epoch.current !== current) return;
       const next = projection(result, view);
       if (!next) {
-        setUnconfirmed(true);
+        if (action === "replaceProfile" && profile) setProfileSendUnknown(true);
+        else setUnconfirmed(true);
         return;
       }
       const unchanged = action === "inspect" && next.state === view?.state && next.challengeId === view?.challengeId;
@@ -187,7 +224,12 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
       setNow(Date.now());
       setView(next);
       setUnconfirmed(false);
-      if (!unchanged) {
+      setProfileSendUnknown(false);
+      const retainedProfile =
+        profile &&
+        next.state === "profile_email_verification_pending" &&
+        (action === "inspect" || (action === "replaceProfile" && next.profileDelivery?.state !== "accepted"));
+      if (!unchanged && !retainedProfile) {
         setCode(next.state === "profile_email_verification_pending" ? (stagedProfileCode.current ?? "") : "");
         stagedProfileCode.current = undefined;
       }
@@ -196,7 +238,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
         stagedProfileCode.current = undefined;
       }
     } catch {
-      if (mounted.current && epoch.current === current) setUnconfirmed(true);
+      if (mounted.current && epoch.current === current) {
+        if (action === "replaceProfile" && profile) setProfileSendUnknown(true);
+        else setUnconfirmed(true);
+      }
     } finally {
       if (mounted.current && epoch.current === current) {
         inFlight.current = undefined;
@@ -327,9 +372,19 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             {t("unconfirmed")}
           </p>
         )}
+        {profile && !unconfirmed && (profileSendUnknown || view?.profileDelivery?.state === "unknown") && (
+          <p className={styles.status} role="status">
+            {t("profileRequestUnknown")}
+          </p>
+        )}
+        {profile && !unconfirmed && !profileSendUnknown && view?.profileDelivery?.state === "accepted" && (
+          <p className={`${styles.destination} ${styles.verifiedLabel}`} role="status">
+            {t("profileRequestAccepted")}
+          </p>
+        )}
         {expired && (
           <p className={styles.status} role="status">
-            {t("expired")}
+            {t(profile ? "profileRequestExpired" : "expired")}
           </p>
         )}
         {(profile || otp) && (
@@ -355,6 +410,36 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             <p id="workforce-enrollment-code-help" className={styles.helper}>
               {t(profile ? "profileHelper" : "sessionHelper")}
             </p>
+            {profile && view?.profileDelivery && (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.resend}`}
+                  disabled={remaining > 0 || !!busy || unconfirmed || expired || profileSendUnknown}
+                  onClick={() => {
+                    if (view?.profileDelivery)
+                      void run("replaceProfile", () =>
+                        replaceReviewedWorkforceProfileEmail({
+                          operationId,
+                          attemptId: view.profileDelivery!.attemptId,
+                          operationKey: intent(`replaceProfile:${view.profileDelivery!.attemptId}`),
+                        }),
+                      );
+                  }}
+                >
+                  {busy === "replaceProfile"
+                    ? t("profileRequesting")
+                    : remaining > 0
+                      ? t("profileReplacementCountdown", {
+                          remaining: `${Math.floor(remaining / 60)
+                            .toString()
+                            .padStart(2, "0")}:${(remaining % 60).toString().padStart(2, "0")}`,
+                        })
+                      : t("profileReplace")}
+                </button>
+                {remaining === 0 && <p className={styles.helper}>{t("profileReplacementConsequence")}</p>}
+              </>
+            )}
             <button
               type="submit"
               className={`${styles.button} ${styles.primary}`}
@@ -420,7 +505,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             {t(busy === "complete" ? "completing" : "complete")}
           </button>
         )}
-        {(unconfirmed || expired || state === "identity_link_pending") && validOperation && (
+        {(unconfirmed || profileSendUnknown || expired || state === "identity_link_pending") && validOperation && (
           <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={!!busy} onClick={check}>
             {t(busy === "inspect" ? "checking" : "check")}
           </button>

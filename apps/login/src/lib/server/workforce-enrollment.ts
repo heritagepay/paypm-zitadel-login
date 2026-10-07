@@ -14,6 +14,7 @@ import {
 } from "../workforce-enrollment-identity-client";
 import { workforceEnrollmentStore, type EnrollmentOriginal } from "../workforce-enrollment-store";
 import { workforcePolicy } from "../workforce-policy";
+import { deliverWorkforceProfileEmail } from "../workforce-profile-email-provider";
 import { workforceProvider, type WorkforceProvider } from "../workforce-provider";
 import { flushWorkforceRevocations } from "../workforce-revocations";
 import { deleteWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
@@ -135,6 +136,54 @@ async function issue(id: string, row: WorkforceChallenge, provider: WorkforcePro
     resendAt: new Date(row.created_at.getTime() + 60000).toISOString(),
   };
 }
+async function issueProfile(id: string, operationKey: string, previousId?: string) {
+  const c = await owned(id);
+  if (c.projection.emailVerified || c.flow.challengeId) throw new Error("Original profile stage required");
+  const template = await reviewedWorkforceEmailVerificationTemplate(id, c.flow.requestId);
+  const row = await c.store.reserveProfileDelivery(c.projection, operationKey, template, previousId);
+  if (await c.store.claimProfileDelivery(id, row.id)) {
+    let ack;
+    try {
+      ack = await deliverWorkforceProfileEmail(
+        c.serviceConfig,
+        { subject: c.projection.providerSubject, organizationId: c.policy.organizationId, template },
+        async () => {
+          const current = await owned(id);
+          if (current.projection.emailVerified || current.flow.challengeId) throw new Error("Profile stage changed");
+          await current.store.currentProfileDelivery(id, row.id);
+        },
+      );
+    } catch {
+      /* No operation-specific native readback exists; never retry an unknown claim. */
+    }
+    await owned(id);
+    await c.store.recordProfileDelivery(id, row.id, ack);
+  }
+  const final = await owned(id);
+  if (final.projection.emailVerified || final.flow.challengeId) throw new Error("Profile stage changed");
+  await final.store.currentProfileDelivery(id, row.id);
+  return {
+    state: "profile_email_verification_pending" as const,
+    email: final.projection.email,
+    requestId: final.flow.requestId,
+    expiresAt: final.original.expires_at.toISOString(),
+    profileDelivery: await final.store.profileDeliveryProjection(id),
+  };
+}
+/** Deliberate replacement only; exact previous attempt and shared contact quota remain server-owned. */
+export async function replaceReviewedWorkforceProfileEmail(command: {
+  operationId: string;
+  operationKey: string;
+  attemptId: string;
+}) {
+  if (!enrollmentUuid(command.operationId) || !enrollmentUuid(command.operationKey) || !enrollmentUuid(command.attemptId))
+    return unavailable();
+  try {
+    return await issueProfile(command.operationId, command.operationKey, command.attemptId);
+  } catch {
+    return unavailable();
+  }
+}
 export async function startReviewedWorkforceEnrollment(command: {
   operationId: string;
   requestId: string;
@@ -145,9 +194,17 @@ export async function startReviewedWorkforceEnrollment(command: {
     const c = await context(command.operationId, command.requestId),
       store = workforceEnrollmentStore(),
       original = await store.begin(c.projection, command.requestId, command.operationKey);
-    await flow(original);
-    if (!c.projection.emailVerified)
-      return { state: "profile_email_verification_pending" as const, email: c.projection.email };
+    const existing = await readWorkforceState();
+    if (existing?.purpose === "reviewed-workforce-enrollment" && existing.enrollmentId === command.operationId) {
+      if (existing.requestId !== command.requestId) throw new Error("Original browser request changed");
+      if (existing.challengeId)
+        return await inspectReviewedWorkforceEnrollmentEntry({
+          operationId: command.operationId,
+          requestId: command.requestId,
+        });
+      await owned(command.operationId);
+    } else await flow(original);
+    if (!c.projection.emailVerified) return await issueProfile(command.operationId, command.operationKey);
     const settings = await getLoginSettings({ serviceConfig: c.serviceConfig, organization: c.policy.organizationId }),
       methods = await listAuthenticationMethodTypes({
         serviceConfig: c.serviceConfig,
@@ -366,6 +423,12 @@ export async function inspectReviewedWorkforceEnrollmentEntry(command: { operati
           state: c.projection.emailVerified
             ? ("profile_email_verified" as const)
             : ("profile_email_verification_pending" as const),
+          ...(!c.projection.emailVerified
+            ? {
+                expiresAt: c.original.expires_at.toISOString(),
+                profileDelivery: await c.store.profileDeliveryProjection(command.operationId),
+              }
+            : {}),
         };
       if (!c.projection.emailVerified) return unavailable();
       const row = await c.store.base.currentEnrollmentChallenge(c.flow.challengeId);

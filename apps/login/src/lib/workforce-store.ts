@@ -118,11 +118,20 @@ export class WorkforceStore {
     cipher.setAuthTag(tag);
     return Buffer.concat([cipher.update(data), cipher.final()]).toString("utf8");
   }
+  /** One contact quota for profile proof and Session OTP, across clients and stages. */
+  emailQuotaHash(issuer: string, contact: string) {
+    return this.index("paypm-workforce-email-quota-v1", issuer + ":" + contact.trim().toLowerCase());
+  }
+  async assertEmailQuota(tx: TransactionSql, contactHash: string) {
+    const [quota] = await tx<{ count: number; recent: boolean }[]>`
+      SELECT count(*)::int AS count,coalesce(max(created_at)>clock_timestamp()-interval '60 seconds',false) AS recent
+      FROM (SELECT created_at FROM login_workforce_challenges WHERE contact_hash=${contactHash}
+        UNION ALL SELECT created_at FROM login_reviewed_workforce_profile_deliveries WHERE contact_hash=${contactHash}) sends
+      WHERE created_at>clock_timestamp()-interval '10 minutes'`;
+    if (quota.count >= 3 || quota.recent) throw new WorkforceStoreError("workforce_delivery_rate_limited");
+  }
   async reserve(input: WorkforceChallengeBinding, previousId?: string): Promise<WorkforceChallenge> {
-    const contactHash = this.index(
-        "paypm-workforce-email-quota-v1",
-        input.issuer + ":" + input.contact.trim().toLowerCase(),
-      ),
+    const contactHash = this.emailQuotaHash(input.issuer, input.contact),
       requestHash = hash(JSON.stringify({ ...input, contact: contactHash, previousId: previousId ?? null }));
     return this.sql.begin(async (tx) => {
       await tx`SELECT pg_advisory_xact_lock(hashtextextended(${contactHash},0))`;
@@ -138,10 +147,7 @@ export class WorkforceStore {
         await this.current(tx, old, false);
         return old;
       }
-      const [quota] = await tx<
-        { count: number; recent: boolean }[]
-      >`SELECT count(*)::int AS count,coalesce(max(created_at)>clock_timestamp()-interval '60 seconds',false) AS recent FROM login_workforce_challenges WHERE contact_hash=${contactHash} AND created_at>clock_timestamp()-interval '10 minutes'`;
-      if (quota.count >= 3 || quota.recent) throw new WorkforceStoreError("workforce_delivery_rate_limited");
+      await this.assertEmailQuota(tx, contactHash);
       if (previousId) {
         const previous = await this.challenge(previousId, tx, true);
         await this.current(tx, previous);
