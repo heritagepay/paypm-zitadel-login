@@ -124,7 +124,7 @@ describe("workforce migration standalone artifact", () => {
   it("wires migration packaging into the existing standalone build that Docker copies to /app", async () => {
     const manifest = JSON.parse(await readFile(join(application, "package.json"), "utf8"));
     expect(manifest.scripts.build).toContain(
-      "cp -r public scripts/* .next/standalone/ && node scripts/package-workforce-migrations.mjs",
+      "cp -r public .next/standalone/apps/login/ && cp -r scripts/* .next/standalone/ && node scripts/package-workforce-migrations.mjs",
     );
     expect(await readFile(join(application, "Dockerfile"), "utf8")).toContain(
       "COPY --chown=nextjs:nodejs .next/standalone ./",
