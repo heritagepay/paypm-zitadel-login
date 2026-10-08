@@ -2,7 +2,7 @@ import type { TransactionSql } from "postgres";
 import "server-only";
 import { workforceAssertionHash } from "./workforce-assertion";
 import type { EnrollmentProjection } from "./workforce-enrollment-identity-client";
-import type { EnrollmentOriginal, WorkforceEnrollmentStore } from "./workforce-enrollment-store";
+import type { EnrollmentCeremony, EnrollmentOriginal, WorkforceEnrollmentStore } from "./workforce-enrollment-store";
 import type { WorkforceProvider } from "./workforce-provider";
 import { WorkforceStoreError, type WorkforceChallenge } from "./workforce-store";
 type Binding = EnrollmentOriginal["binding"];
@@ -130,8 +130,17 @@ export class WorkforceEnrollmentRestart {
       >`SELECT provider_session_id FROM login_reviewed_workforce_restart_session_observations WHERE operation_key=${intent.operation_key} AND challenge_id=${row.id}`;
       if (observed.provider_session_id !== (sessionId ?? null))
         throw new WorkforceStoreError("enrollment_retirement_changed");
-      if (sessionId && !(await provider.retireEnrollmentChallenge(sessionId, row)))
-        throw new WorkforceStoreError("enrollment_retirement_unconfirmed");
+      if (sessionId) {
+        let retired: boolean;
+        try {
+          retired = await provider.retireEnrollmentChallenge(sessionId, row);
+        } catch (error) {
+          if (!(error instanceof WorkforceStoreError) || error.code !== "retirement_provider_binding_changed") throw error;
+          const hash = await this.sealedRetirementCeremony(intent, row, sessionId);
+          retired = await provider.retireEnrollmentChallenge(sessionId, row, hash);
+        }
+        if (!retired) throw new WorkforceStoreError("enrollment_retirement_unconfirmed");
+      }
       await this.store.base
         .sql`INSERT INTO login_reviewed_workforce_restart_session_evidence(operation_key,challenge_id,provider_session_id) VALUES(${intent.operation_key},${row.id},${sessionId ?? null}) ON CONFLICT DO NOTHING`;
       const [confirmed] = await this.store.base.sql<
@@ -140,6 +149,48 @@ export class WorkforceEnrollmentRestart {
       if (confirmed.provider_session_id !== (sessionId ?? null))
         throw new WorkforceStoreError("enrollment_retirement_changed");
     }
+  }
+  private async sealedRetirementCeremony(intent: RestartIntent, row: WorkforceChallenge, sessionId: string) {
+    const previous = await this.store.custody(intent.enrollment_id);
+    if (
+      (previous.attempt_id ?? previous.enrollment_id) !== intent.previous_id ||
+      previous.binding_hash !== intent.previous_binding_hash ||
+      row.provider_session_id !== sessionId ||
+      row.purpose !== "reviewed_enrollment" ||
+      row.issuer !== previous.issuer ||
+      row.provider_subject !== previous.provider_subject ||
+      row.client_id !== previous.client_id ||
+      row.request_id !== previous.request_id ||
+      String(row.epoch) !== String(previous.epoch) ||
+      row.created_at.getTime() < previous.created_at.getTime() ||
+      row.created_at.getTime() >= previous.expires_at.getTime()
+    )
+      throw new WorkforceStoreError("enrollment_retirement_changed");
+    const b = previous.binding;
+    const expected: EnrollmentCeremony = {
+      enrollmentId: intent.enrollment_id,
+      personId: b.personId,
+      policyId: b.policyId,
+      issuer: b.issuer,
+      organizationId: b.organizationId,
+      clientId: b.clientId,
+      providerSubject: b.providerSubject,
+      sessionId,
+      challengeId: row.id,
+      epoch: String(row.epoch),
+      issuedAt: row.created_at.toISOString(),
+      expiresAt: new Date(Math.min(row.expires_at.getTime(), previous.expires_at.getTime())).toISOString(),
+      sourceRevision: b.sourceRevision,
+      imageDigest: b.imageDigest,
+      configurationSha256: b.configurationSha256,
+    };
+    const rows = await this.store.base.sql<{ ceremony: EnrollmentCeremony; ceremony_hash: string }[]>`
+      SELECT ceremony,ceremony_hash FROM login_reviewed_workforce_enrollment_challenges
+      WHERE enrollment_id=${intent.enrollment_id} AND challenge_id=${row.id}`;
+    const hash = workforceAssertionHash(expected);
+    if (rows.length !== 1 || rows[0].ceremony_hash !== hash || workforceAssertionHash(rows[0].ceremony) !== hash)
+      throw new WorkforceStoreError("enrollment_retirement_unconfirmed");
+    return hash;
   }
   async activate(intent: RestartIntent, p: EnrollmentProjection, requestId: string) {
     const binding = this.store.binding(p, requestId);

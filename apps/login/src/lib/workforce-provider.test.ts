@@ -151,13 +151,15 @@ describe("native reviewed enrollment metadata", () => {
     };
     const getSession = vi.fn(async () => ({ session: record })),
       setSession = vi.fn(async (input: any) => {
-        Object.assign(record.metadata, input.metadata);
+        record.metadata = { ...input.metadata };
         return {};
       });
     const provider = new WorkforceProvider({ getSession, setSession } as any, "300");
     await provider.attachEnrollment(row, "a".repeat(64));
     expect(setSession).toHaveBeenCalledOnce();
     expect(setSession.mock.calls[0][0].metadata).toEqual({
+      paypm_workforce_action_intent: new TextEncoder().encode(operationKey),
+      paypm_workforce_challenge: new TextEncoder().encode(id),
       ["paypm_workforce_enrollment_" + id]: new TextEncoder().encode("a".repeat(64)),
     });
     await provider.attachEnrollment(row, "a".repeat(64));
@@ -168,6 +170,50 @@ describe("native reviewed enrollment metadata", () => {
     await expect(provider.attachEnrollment({ ...row, purpose: "login" }, "a".repeat(64))).rejects.toMatchObject({
       code: "enrollment_purpose_mismatch",
     });
+  });
+});
+
+describe("native Session metadata replacement contract", () => {
+  afterEach(() => vi.useRealTimers());
+  it("retains ownership and ceremony evidence across delivery, token renewal and OTP verification", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-10-08T21:19:47Z").getTime();
+    vi.setSystemTime(now);
+    const record: any = session(),
+      id = randomUUID(),
+      attemptId = randomUUID();
+    record.metadata.paypm_workforce_challenge = new TextEncoder().encode(id);
+    const original = { ...record.metadata };
+    const row: any = {
+      id,
+      purpose: "reviewed_enrollment",
+      provider_session_id: record.id,
+      provider_subject: "700",
+      operation_key: operationKey,
+      issued_at: new Date(now),
+    };
+    const attempt: any = { id: attemptId, code_hash: "b".repeat(64), created_at: new Date(now) };
+    const api = {
+      getSession: vi.fn(async () => ({ session: record })),
+      setSession: vi.fn(async (input: any) => {
+        // The deployed provider replaces the supplied map; it does not merge keys.
+        if (input.metadata !== undefined) record.metadata = { ...input.metadata };
+        if (input.checks?.otpEmail) record.factors.otpEmail = { verifiedAt: timestamp(now) };
+        return { sessionToken: "synthetic-private-token" };
+      }),
+    };
+    const provider = new WorkforceProvider(api as any, "300");
+    await provider.attachEnrollment(row, "a".repeat(64));
+    expect(provider.deliveryAccepted((await provider.deliver(row)).session, row)).toBe(true);
+    expect((await provider.token(row)).token).toBe("synthetic-private-token");
+    expect(provider.verificationAccepted((await provider.verify(row, attempt, "123456")).session, row, attempt)).toBe(true);
+    expect(record.metadata).toEqual({
+      ...original,
+      ["paypm_workforce_enrollment_" + id]: new TextEncoder().encode("a".repeat(64)),
+      ["paypm_workforce_delivery_" + id]: new TextEncoder().encode(operationKey),
+      ["paypm_workforce_attempt_" + attemptId]: new TextEncoder().encode(attempt.code_hash),
+    });
+    expect(api.setSession).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -234,6 +280,54 @@ describe("native Session creation and exact lost-response recovery", () => {
 });
 
 describe("exact enrollment-challenge retirement", () => {
+  it.each([
+    "exact",
+    "no-evidence",
+    "wrong-hash",
+    "wrong-bound-session",
+    "conflicting-creation",
+    "wrong-subject",
+    "wrong-organization",
+  ])("uses independently sealed legacy ceremony only for %s ownership", async (kind) => {
+    const { ClassifiedConnectError } = await import("./grpc/interceptors/error-classification"),
+      { ConnectError, Code } = await import("@connectrpc/connect");
+    const record = session(),
+      id = randomUUID(),
+      hash = "a".repeat(64);
+    record.expirationDate = timestamp(Date.now() - 1000);
+    record.factors.user.verifiedAt = timestamp(Date.now() - 10002);
+    record.metadata[("paypm_workforce_enrollment_" + id) as keyof typeof record.metadata] = new TextEncoder().encode(hash);
+    if (kind === "conflicting-creation")
+      record.metadata["paypm_workforce_challenge" as keyof typeof record.metadata] = new TextEncoder().encode(randomUUID());
+    if (kind === "wrong-subject") record.factors.user.id = "701";
+    if (kind === "wrong-organization") record.factors.user.organizationId = "301";
+    const row: any = {
+      id,
+      purpose: "reviewed_enrollment",
+      provider_subject: "700",
+      provider_session_id: kind === "wrong-bound-session" ? "other" : record.id,
+    };
+    const getSession = vi
+        .fn()
+        .mockResolvedValueOnce({ session: record })
+        .mockRejectedValueOnce(new ClassifiedConnectError(new ConnectError("absent", Code.NotFound))),
+      deleteSession = vi.fn(),
+      setSession = vi.fn();
+    const p = new WorkforceProvider({ getSession, deleteSession, setSession } as any, "300");
+    const result = p.retireEnrollmentChallenge(
+      record.id,
+      row,
+      kind === "no-evidence" ? undefined : kind === "wrong-hash" ? "b".repeat(64) : hash,
+    );
+    if (kind === "exact") {
+      expect(await result).toBe(true);
+      expect(deleteSession).toHaveBeenCalledOnce();
+    } else {
+      await expect(result).rejects.toThrow();
+      expect(deleteSession).not.toHaveBeenCalled();
+    }
+    expect(setSession).not.toHaveBeenCalled();
+  });
   it("accepts an expired structurally identified Session, checks exact metadata, and proves absence", async () => {
     const { ClassifiedConnectError } = await import("./grpc/interceptors/error-classification"),
       { ConnectError, Code } = await import("@connectrpc/connect");
