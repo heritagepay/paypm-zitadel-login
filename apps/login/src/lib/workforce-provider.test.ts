@@ -232,3 +232,53 @@ describe("native Session creation and exact lost-response recovery", () => {
     expect(api.deleteSession).not.toHaveBeenCalled();
   });
 });
+
+describe("exact enrollment-challenge retirement", () => {
+  it("accepts an expired structurally identified Session, checks exact metadata, and proves absence", async () => {
+    const { ClassifiedConnectError } = await import("./grpc/interceptors/error-classification"),
+      { ConnectError, Code } = await import("@connectrpc/connect");
+    const record = session(),
+      id = randomUUID();
+    record.expirationDate = timestamp(Date.now() - 1000);
+    record.factors.user.verifiedAt = timestamp(Date.now() - 10002);
+    record.metadata["paypm_workforce_challenge" as keyof typeof record.metadata] = new TextEncoder().encode(id);
+    const getSession = vi
+        .fn()
+        .mockResolvedValueOnce({ session: record })
+        .mockRejectedValueOnce(new ClassifiedConnectError(new ConnectError("absent", Code.NotFound))),
+      deleteSession = vi.fn();
+    expect(
+      await new WorkforceProvider({ getSession, deleteSession } as any, "300").retireEnrollmentChallenge(record.id, {
+        id,
+        purpose: "reviewed_enrollment",
+        provider_subject: "700",
+      } as any),
+    ).toBe(true);
+    expect(deleteSession).toHaveBeenCalledOnce();
+  });
+  it.each(["metadata", "subject", "organization", "purpose", "missing-user"])(
+    "never deletes a %s mismatch",
+    async (kind) => {
+      const record = session(),
+        id = randomUUID();
+      record.metadata["paypm_workforce_challenge" as keyof typeof record.metadata] = new TextEncoder().encode(
+        kind === "metadata" ? randomUUID() : id,
+      );
+      if (kind === "subject") record.factors.user.id = "701";
+      if (kind === "organization") record.factors.user.organizationId = "301";
+      if (kind === "missing-user") (record.factors.user as any).verifiedAt = undefined;
+      const deleteSession = vi.fn();
+      await expect(
+        new WorkforceProvider(
+          { getSession: vi.fn(async () => ({ session: record })), deleteSession } as any,
+          "300",
+        ).retireEnrollmentChallenge(record.id, {
+          id,
+          purpose: kind === "purpose" ? "login" : "reviewed_enrollment",
+          provider_subject: "700",
+        } as any),
+      ).rejects.toThrow();
+      expect(deleteSession).not.toHaveBeenCalled();
+    },
+  );
+});

@@ -19,6 +19,7 @@ const versions = [
   "007_identity_action_requests",
   "008_reviewed_workforce_enrollment",
   "009_reviewed_workforce_profile_delivery",
+  "010_reviewed_workforce_restart",
 ];
 async function run(connection: string) {
   return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
@@ -71,7 +72,7 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
       SELECT version,checksum,applied_at::text AS applied_at FROM login_workforce_migrations ORDER BY version`;
   }
 
-  it("serializes concurrent initial runs, applies all nine checksums once and keeps replay timestamps", async () => {
+  it("serializes concurrent initial runs, applies all forward checksums once and keeps replay timestamps", async () => {
     const results = await Promise.all([run(connection), run(connection)]);
     expect(results.map((result) => result.status)).toEqual([0, 0]);
     const initial = await ledger();
@@ -137,7 +138,7 @@ suite("workforce migration runner (disposable PostgreSQL)", () => {
       expect(await sql.unsafe(`SELECT count(*)::int AS count FROM ${table}`)).toEqual([{ count: 0 }]);
     }
     const after = await ledger();
-    expect(after).toHaveLength(9);
+    expect(after).toHaveLength(versions.length);
     expect((await run(connection)).status).toBe(0);
     expect(await ledger()).toEqual(after);
   });

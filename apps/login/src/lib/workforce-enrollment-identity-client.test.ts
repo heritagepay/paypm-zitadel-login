@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   enrollmentIdentityRequest,
   parseEnrollmentCompletion,
+  parseEnrollmentOutcome,
   parseEnrollmentProjection,
 } from "./workforce-enrollment-identity-client";
 const id = randomUUID(),
@@ -225,5 +226,41 @@ describe("closed purpose-specific Identity authority", () => {
     expect(String(fetch.mock.calls[1][0])).toBe(
       `https://identity.paypm.test/api/internal/v1/reviewed-workforce-enrollments/${id}/current`,
     );
+  });
+});
+
+describe("owning uncertain-completion outcome contract", () => {
+  it("reads the exact empty-body owner endpoint with server-held machine credentials", async () => {
+    const p = { enrollmentId: id, personId: randomUUID(), providerSubject: "700", state: "completed" },
+      fetch = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ access_token: "private-token", token_type: "Bearer" }))
+        .mockResolvedValueOnce(Response.json(p));
+    vi.stubGlobal("fetch", fetch);
+    expect(await enrollmentIdentityRequest("outcome", id)).toEqual(p);
+    expect(String(fetch.mock.calls[1][0])).toBe(
+      `https://identity.paypm.test/api/internal/v1/reviewed-workforce-enrollments/${id}/outcome`,
+    );
+    expect(fetch.mock.calls[1][1]).toMatchObject({ body: "{}", cache: "no-store", redirect: "error" });
+  });
+  it.each([
+    { state: "enabled" },
+    { providerSubject: 700 },
+    { personId: "other" },
+    { enrollmentId: randomUUID() },
+    { roles: ["identity.staff"] },
+  ])("denies injected/malformed outcome %j", (extra) => {
+    expect(() =>
+      parseEnrollmentOutcome(
+        { enrollmentId: id, personId: randomUUID(), providerSubject: "700", state: "pending", ...extra },
+        id,
+      ),
+    ).toThrow();
+  });
+  it("never accepts caller-supplied pending authority", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(enrollmentIdentityRequest("outcome", id, { state: "pending" })).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

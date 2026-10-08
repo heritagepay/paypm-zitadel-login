@@ -22,6 +22,7 @@ try {
       "007_identity_action_requests",
       "008_reviewed_workforce_enrollment",
       "009_reviewed_workforce_profile_delivery",
+      "010_reviewed_workforce_restart",
     ]) {
       const source = await readFile(new URL(`../migrations/${version}.sql`, import.meta.url), "utf8"),
         checksum = createHash("sha256").update(source).digest("hex");

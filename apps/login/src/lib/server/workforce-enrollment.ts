@@ -10,15 +10,17 @@ import {
   enrollmentIdentityRequest,
   enrollmentRuntime,
   enrollmentUuid,
+  type EnrollmentOutcome,
   type EnrollmentProjection,
 } from "../workforce-enrollment-identity-client";
+import { WorkforceEnrollmentRestart } from "../workforce-enrollment-restart";
 import { workforceEnrollmentStore, type EnrollmentOriginal } from "../workforce-enrollment-store";
 import { workforcePolicy } from "../workforce-policy";
 import { deliverWorkforceProfileEmail } from "../workforce-profile-email-provider";
 import { workforceProvider, type WorkforceProvider } from "../workforce-provider";
 import { flushWorkforceRevocations } from "../workforce-revocations";
 import { deleteWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
-import { type WorkforceChallenge } from "../workforce-store";
+import { WorkforceStoreError, type WorkforceChallenge } from "../workforce-store";
 import {
   addOTPEmail,
   getAuthRequest,
@@ -56,6 +58,16 @@ async function context(id: string, requestId: string) {
   if (authRequest?.clientId !== current.projection.clientId) throw new Error("Original request client changed");
   return current;
 }
+async function pendingOutcome(p: EnrollmentProjection) {
+  const outcome = (await enrollmentIdentityRequest("outcome", p.enrollmentId)) as EnrollmentOutcome;
+  if (
+    outcome.enrollmentId !== p.enrollmentId ||
+    outcome.personId !== p.personId ||
+    outcome.providerSubject !== p.providerSubject ||
+    outcome.state !== "pending"
+  )
+    throw new Error("Original unfinished enrollment required");
+}
 async function owned(id: string, allowCompleted = false) {
   const flow = await readWorkforceState();
   if (!flow || flow.purpose !== "reviewed-workforce-enrollment" || flow.enrollmentId !== id)
@@ -74,7 +86,9 @@ async function owned(id: string, allowCompleted = false) {
   if (
     flow.userId !== original.provider_subject ||
     flow.clientId !== original.client_id ||
-    flow.requestId !== original.request_id
+    flow.requestId !== original.request_id ||
+    flow.issuedAt !== original.created_at.getTime() ||
+    flow.expiresAt !== original.expires_at.getTime()
   )
     throw new Error("Original browser binding changed");
   return { flow, store, original, ...current };
@@ -95,7 +109,17 @@ async function flow(original: EnrollmentOriginal, row?: WorkforceChallenge) {
 async function issue(id: string, row: WorkforceChallenge, provider: WorkforceProvider) {
   const store = workforceEnrollmentStore();
   await flushWorkforceRevocations(store.base, provider);
-  await store.original(id);
+  const bound = await store.original(id);
+  if (
+    row.issuer !== bound.issuer ||
+    row.provider_subject !== bound.provider_subject ||
+    row.client_id !== bound.client_id ||
+    row.request_id !== bound.request_id ||
+    String(row.epoch) !== String(bound.epoch) ||
+    row.created_at.getTime() < bound.created_at.getTime() ||
+    row.created_at.getTime() >= bound.expires_at.getTime()
+  )
+    throw new Error("Current enrollment attempt required");
   if (row.purpose !== "reviewed_enrollment") throw new Error("Original enrollment purpose required");
   if (row.state === "session_pending") {
     const created = (await store.base.claimSession(row.id))
@@ -140,7 +164,8 @@ async function issueProfile(id: string, operationKey: string, previousId?: strin
   const c = await owned(id);
   if (c.projection.emailVerified || c.flow.challengeId) throw new Error("Original profile stage required");
   const template = await reviewedWorkforceEmailVerificationTemplate(id, c.flow.requestId);
-  const row = await c.store.reserveProfileDelivery(c.projection, operationKey, template, previousId);
+  const replacement = previousId ?? (await c.store.profileReplacementForAttempt(id));
+  const row = await c.store.reserveProfileDelivery(c.projection, operationKey, template, replacement);
   if (await c.store.claimProfileDelivery(id, row.id)) {
     let ack;
     try {
@@ -191,9 +216,22 @@ export async function startReviewedWorkforceEnrollment(command: {
 }) {
   if (!enrollmentUuid(command.operationId) || !enrollmentUuid(command.operationKey)) return unavailable();
   try {
-    const c = await context(command.operationId, command.requestId),
-      store = workforceEnrollmentStore(),
+    let c = await context(command.operationId, command.requestId);
+    await pendingOutcome(c.projection);
+    const store = workforceEnrollmentStore();
+    let original: EnrollmentOriginal;
+    try {
       original = await store.begin(c.projection, command.requestId, command.operationKey);
+    } catch (error) {
+      if (!(error instanceof WorkforceStoreError) || error.code !== "enrollment_restart_required") throw error;
+      const restart = new WorkforceEnrollmentRestart(store),
+        intent = await restart.prepare(c.projection, command.requestId, command.operationKey);
+      await restart.retireSessions(intent, await workforceProvider(c.serviceConfig, c.policy.organizationId));
+      c = await context(command.operationId, command.requestId);
+      await pendingOutcome(c.projection);
+      original = await restart.activate(intent, c.projection, command.requestId);
+      await deleteWorkforceState();
+    }
     const existing = await readWorkforceState();
     if (existing?.purpose === "reviewed-workforce-enrollment" && existing.enrollmentId === command.operationId) {
       if (existing.requestId !== command.requestId) throw new Error("Original browser request changed");
@@ -212,15 +250,8 @@ export async function startReviewedWorkforceEnrollment(command: {
       });
     if (!settings?.allowLocalAuthentication || !methods.authMethodTypes.includes(AuthenticationMethodType.OTP_EMAIL))
       throw new Error("Native email method unavailable");
-    const row = await store.base.reserve({
-      operationKey: command.operationKey,
-      issuer: c.policy.issuer,
-      userId: c.projection.providerSubject,
-      clientId: c.projection.clientId,
-      requestId: command.requestId,
-      contact: c.projection.email,
-      purpose: "reviewed_enrollment",
-    });
+    await pendingOutcome(c.projection);
+    const row = await store.reserveChallenge(c.projection, command.operationKey, command.requestId);
     return await issue(command.operationId, row, await workforceProvider(c.serviceConfig, c.policy.organizationId));
   } catch {
     return unavailable();
@@ -241,6 +272,7 @@ export async function verifyReviewedWorkforceProfileEmail(command: {
   try {
     let c = await owned(command.operationId);
     if (!c.projection.emailVerified) {
+      await c.store.currentProfileDelivery(command.operationId);
       if (!(await c.store.profileAttempt(command.operationId, command.operationKey, command.code))) return unavailable();
       try {
         await verifyEmail({
@@ -295,7 +327,7 @@ export async function verifyReviewedWorkforceEnrollment(command: {
     const row = await c.store.base.currentEnrollmentChallenge(command.challengeId);
     if (row.provider_session_id !== c.flow.sessionId) return unavailable();
     const provider = await workforceProvider(c.serviceConfig, c.policy.organizationId),
-      attempt = await c.store.base.attempt(row.id, command.operationKey, command.code);
+      attempt = await c.store.attempt(command.operationId, row.id, command.operationKey, command.code);
     let result;
     if (attempt.first) {
       try {
@@ -341,18 +373,7 @@ export async function resendReviewedWorkforceEnrollment(command: {
     const c = await owned(command.operationId);
     if (c.flow.challengeId !== command.challengeId || !c.projection.emailVerified) return unavailable();
     const row = await c.store.base.currentEnrollmentChallenge(command.challengeId),
-      next = await c.store.base.reserve(
-        {
-          operationKey: command.operationKey,
-          issuer: c.policy.issuer,
-          userId: c.projection.providerSubject,
-          clientId: c.projection.clientId,
-          requestId: c.flow.requestId,
-          contact: c.projection.email,
-          purpose: "reviewed_enrollment",
-        },
-        row.id,
-      );
+      next = await c.store.reserveChallenge(c.projection, command.operationKey, c.flow.requestId, row.id);
     return await issue(command.operationId, next, await workforceProvider(c.serviceConfig, c.policy.organizationId));
   } catch {
     return unavailable();
