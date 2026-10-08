@@ -3,7 +3,13 @@ import { RequestChallengesSchema } from "@zitadel/proto/zitadel/session/v2/chall
 import type { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { ChecksSchema, SessionService } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import "server-only";
-import { providerTimestampMs, sessionLifetime, verifiedFactor } from "./authentication-policy";
+import {
+  activeSessionIdentifiesUser,
+  providerTimestampMs,
+  sessionIdentifiesUser,
+  sessionLifetime,
+  verifiedFactor,
+} from "./authentication-policy";
 import { getUserAgent } from "./fingerprint";
 import { isClassifiedError } from "./grpc/interceptors/error-classification";
 import { createServiceForHost } from "./service";
@@ -23,7 +29,7 @@ export class WorkforceProvider {
       session.factors?.user?.id !== row.provider_subject ||
       session.factors.user.organizationId !== this.organizationId ||
       text(session.metadata[creationKey]) !== row.id ||
-      !verifiedFactor(session, session.factors.user.verifiedAt)
+      !activeSessionIdentifiesUser(session)
     )
       throw new WorkforceStoreError("provider_session_mismatch");
     return session;
@@ -163,7 +169,7 @@ export class WorkforceProvider {
       matches.length !== 1 ||
       matches[0].factors?.user?.id !== subject ||
       matches[0].factors.user.organizationId !== this.organizationId ||
-      !verifiedFactor(matches[0], matches[0].factors.user.verifiedAt)
+      !activeSessionIdentifiesUser(matches[0])
     )
       throw new WorkforceStoreError("action_provider_pending");
     return matches[0].id;
@@ -184,19 +190,10 @@ export class WorkforceProvider {
       throw new WorkforceStoreError("action_provider_pending");
     const session = matches[0];
     if (!session) return undefined;
-    const created = providerTimestampMs(session.creationDate),
-      expires = providerTimestampMs(session.expirationDate),
-      verified = providerTimestampMs(session.factors?.user?.verifiedAt);
     if (
       session.factors?.user?.id !== subject ||
       session.factors.user.organizationId !== this.organizationId ||
-      created === undefined ||
-      created > Date.now() ||
-      expires === undefined ||
-      expires <= created ||
-      verified === undefined ||
-      verified < created ||
-      verified > Date.now()
+      !sessionIdentifiesUser(session)
     )
       throw new WorkforceStoreError("action_provider_pending");
     return session;

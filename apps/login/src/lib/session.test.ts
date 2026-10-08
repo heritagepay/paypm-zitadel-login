@@ -96,6 +96,47 @@ describe("isSessionValid", () => {
     return defaultSession;
   };
 
+  describe("native user lookup ordering", () => {
+    test("lookup alone never authenticates; post-creation credentials remain required", async () => {
+      const record = createMockSession();
+      record.factors.user.verifiedAt = createMockTimestamp(-2000);
+      record.factors.password = undefined;
+      expect(await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session: record })).toBe(false);
+      record.factors.password = { verifiedAt: createMockTimestamp() };
+      expect(await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session: record })).toBe(true);
+      record.factors.password.verifiedAt = createMockTimestamp(-2000);
+      expect(await isSessionValid({ serviceConfig: { baseUrl: mockServiceUrl }, session: record })).toBe(false);
+    });
+    test("limited email admission requires real current OTP and a verified enrolled email", async () => {
+      const record = createMockSession();
+      record.factors.user.verifiedAt = createMockTimestamp(-2000);
+      record.factors.password = undefined;
+      vi.mocked(zitadelModule.getLoginSettings).mockResolvedValue({ allowLocalAuthentication: true } as any);
+      vi.mocked(zitadelModule.listAuthenticationMethodTypes).mockResolvedValue({
+        authMethodTypes: [AuthenticationMethodType.OTP_EMAIL],
+      } as any);
+      vi.mocked(zitadelModule.getUserByID).mockResolvedValue({
+        user: { type: { case: "human", value: { email: { isVerified: true } } } },
+      } as any);
+      const check = () =>
+        isSessionValid({
+          serviceConfig: { baseUrl: mockServiceUrl },
+          session: record,
+          authenticationClass: "workforce_limited",
+        });
+      expect(await check()).toBe(false);
+      record.factors.otpEmail = { verifiedAt: createMockTimestamp() };
+      expect(await check()).toBe(true);
+      record.factors.otpEmail.verifiedAt = createMockTimestamp(-2000);
+      expect(await check()).toBe(false);
+      record.factors.otpEmail.verifiedAt = createMockTimestamp();
+      vi.mocked(zitadelModule.getUserByID).mockResolvedValue({
+        user: { type: { case: "human", value: { email: { isVerified: false } } } },
+      } as any);
+      expect(await check()).toBe(false);
+    });
+  });
+
   describe("when session has no user", () => {
     test("should return false and log warning", async () => {
       const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

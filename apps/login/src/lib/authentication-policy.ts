@@ -34,6 +34,33 @@ export function verifiedFactor(session: Partial<Session>, timestamp: Timestamp |
   );
 }
 
+/**
+ * Provider user lookup binds a session to a subject; it is not credential proof.
+ * ZITADEL 4.15.3 runs CheckUser before persisting SessionAdded, so user.verifiedAt
+ * may precede creationDate. Credential factors still use verifiedFactor.
+ * Expired records remain inspectable for owned retirement, never admission.
+ */
+export function sessionIdentifiesUser(session: Partial<Session>, now = Date.now()): boolean {
+  const user = session.factors?.user;
+  const identified = providerTimestampMs(user?.verifiedAt);
+  const created = providerTimestampMs(session.creationDate);
+  const expires = providerTimestampMs(session.expirationDate);
+  return (
+    typeof user?.id === "string" &&
+    user.id.trim().length > 0 &&
+    created !== undefined &&
+    created <= now &&
+    expires !== undefined &&
+    expires > created &&
+    identified !== undefined &&
+    identified <= now
+  );
+}
+
+export function activeSessionIdentifiesUser(session: Partial<Session>, now = Date.now()): boolean {
+  return sessionIdentifiesUser(session, now) && sessionExpiresAt(session, now) !== undefined;
+}
+
 export function sessionLifetime(requested?: Duration, session?: Partial<Session>, now = Date.now()): Duration {
   const cutoff = session ? sessionExpiresAt(session, now) : now + WEB_SESSION_ABSOLUTE_MS;
   if (cutoff === undefined) throw new Error("Session has expired or has no bounded provider lifetime");
@@ -65,7 +92,7 @@ export function hasFreshPasskeyVerification(
     ceremonyStartedAt <= now &&
     now - ceremonyStartedAt <= FRESH_PASSKEY_MS &&
     session.factors?.user?.id === expectedUserId &&
-    verifiedFactor(session, session.factors.user.verifiedAt, now) &&
+    activeSessionIdentifiesUser(session, now) &&
     factor?.userVerified === true &&
     verified !== undefined &&
     verified >= ceremonyStartedAt &&

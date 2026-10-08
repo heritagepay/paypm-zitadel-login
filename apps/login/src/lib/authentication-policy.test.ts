@@ -2,10 +2,12 @@ import { Prompt } from "@zitadel/proto/zitadel/oidc/v2/authorization_pb";
 import type { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { describe, expect, it } from "vitest";
 import {
+  activeSessionIdentifiesUser,
   hasFreshPasskeyVerification,
   providerTimestampMs,
   satisfiesAuthorizationFreshness,
   sessionExpiresAt,
+  sessionIdentifiesUser,
   sessionLifetime,
   verifiedFactor,
   WEB_SESSION_ABSOLUTE_MS,
@@ -90,5 +92,67 @@ describe("bounded provider authentication evidence", () => {
     expect(satisfiesAuthorizationFreshness(session(), request, false, now)).toBe(true);
     request.maxAge = { seconds: BigInt(0), nanos: 1000 };
     expect(satisfiesAuthorizationFreshness(session(), request, false, now)).toBe(false);
+  });
+});
+
+describe("native user identification is not credential verification", () => {
+  const nativeSession = () =>
+    ({
+      creationDate: { seconds: BigInt(1791481361), nanos: 712607000 },
+      expirationDate: { seconds: BigInt(1791510161), nanos: 712607000 },
+      factors: { user: { id: "expected-user", verifiedAt: { seconds: BigInt(1791481361), nanos: 709949000 } } },
+    }) as any;
+  const observed = 1791481362000;
+  it("accepts the recorded CheckUser-before-SessionAdded ordering without a tolerance window", () => {
+    const value = nativeSession();
+    expect(activeSessionIdentifiesUser(value, observed)).toBe(true);
+    expect(verifiedFactor(value, value.factors.user.verifiedAt, observed)).toBe(false);
+    expect(hasFreshPasskeyVerification(value, "expected-user", observed - 1000, observed)).toBe(false);
+    const request = { creationDate: timestamp(observed - 1000), prompt: [Prompt.LOGIN] } as any;
+    expect(satisfiesAuthorizationFreshness(value, request, true, observed)).toBe(false);
+    for (const factor of ["password", "webAuthN", "intent", "otpEmail"]) {
+      const candidate = nativeSession();
+      candidate.factors[factor] = { userVerified: true, verifiedAt: candidate.factors.user.verifiedAt };
+      expect(satisfiesAuthorizationFreshness(candidate, request, true, observed)).toBe(false);
+    }
+    value.factors.webAuthN = { userVerified: true, verifiedAt: timestamp(observed - 100) };
+    expect(hasFreshPasskeyVerification(value, "expected-user", observed - 500, observed)).toBe(true);
+    expect(hasFreshPasskeyVerification(value, "other-user", observed - 500, observed)).toBe(false);
+    value.factors.webAuthN.userVerified = false;
+    expect(hasFreshPasskeyVerification(value, "expected-user", observed - 500, observed)).toBe(false);
+  });
+  it.each([
+    "no-user",
+    "empty-subject",
+    "missing-lookup",
+    "future-lookup",
+    "bad-lookup",
+    "no-creation",
+    "future-creation",
+    "no-expiry",
+    "invalid-expiry",
+  ])("denies %s", (kind) => {
+    const value = nativeSession();
+    if (kind === "no-user") value.factors.user = undefined;
+    if (kind === "empty-subject") value.factors.user.id = " ";
+    if (kind === "missing-lookup") value.factors.user.verifiedAt = undefined;
+    if (kind === "future-lookup") value.factors.user.verifiedAt = timestamp(observed + 1);
+    if (kind === "bad-lookup") value.factors.user.verifiedAt.nanos = 1e9;
+    if (kind === "no-creation") value.creationDate = undefined;
+    if (kind === "future-creation") value.creationDate = timestamp(observed + 1);
+    if (kind === "no-expiry") value.expirationDate = undefined;
+    if (kind === "invalid-expiry") value.expirationDate = value.creationDate;
+    expect(activeSessionIdentifiesUser(value, observed)).toBe(false);
+    expect(sessionIdentifiesUser(value, observed)).toBe(false);
+  });
+  it("allows structural retirement readback of expired records while denying active use or renewal", () => {
+    const value = nativeSession();
+    value.expirationDate = timestamp(observed - 100);
+    expect(sessionIdentifiesUser(value, observed)).toBe(true);
+    expect(activeSessionIdentifiesUser(value, observed)).toBe(false);
+    expect(() => sessionLifetime(undefined, value, observed)).toThrow();
+    value.expirationDate = timestamp(observed + 86400000);
+    expect(activeSessionIdentifiesUser(value, observed + WEB_SESSION_ABSOLUTE_MS)).toBe(false);
+    expect(sessionIdentifiesUser(value, observed + WEB_SESSION_ABSOLUTE_MS)).toBe(true);
   });
 });
