@@ -5,7 +5,13 @@ import { ChecksSchema, type Checks } from "@zitadel/proto/zitadel/session/v2/ses
 import { headers } from "next/headers";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import "server-only";
-import { providerTimestampMs, sessionLifetime, verifiedFactor } from "./authentication-policy";
+import {
+  activeSessionIdentifiesUser,
+  providerTimestampMs,
+  sessionIdentifiesUser,
+  sessionLifetime,
+  verifiedFactor,
+} from "./authentication-policy";
 import { isClassifiedError } from "./grpc/interceptors/error-classification";
 import {
   operationsActionFamily,
@@ -266,7 +272,7 @@ function accepted(session: Session | undefined, row: OperationsActionRow) {
     session.id !== row.provider_session_id ||
     session.factors?.user?.id !== row.provider_subject ||
     session.factors.user.organizationId !== p.organizationId ||
-    !verifiedFactor(session, session.factors.user.verifiedAt) ||
+    !activeSessionIdentifiesUser(session) ||
     session.factors.webAuthN?.userVerified !== true ||
     !verifiedFactor(session, session.factors.webAuthN.verifiedAt) ||
     new TextDecoder().decode(session.metadata["paypm_operations_action_accept_" + row.id]) !== row.assertion_hash ||
@@ -483,21 +489,14 @@ export async function observeOperationsAction(request: Request, id: string, fami
         ).inspectActionIntent(id, original.provider_subject, "paypm_operations_action_intent");
       }
       if (observed) {
-        const created = providerTimestampMs(observed.creationDate),
-          expires = providerTimestampMs(observed.expirationDate),
-          verified = providerTimestampMs(observed.factors?.user?.verifiedAt);
+        const expires = providerTimestampMs(observed.expirationDate);
         if (
           (original.provider_session_id && observed.id !== original.provider_session_id) ||
           observed.factors?.user?.id !== original.provider_subject ||
           observed.factors.user.organizationId !== p.organizationId ||
           new TextDecoder().decode(observed.metadata["paypm_operations_action_intent"]) !== id ||
-          created === undefined ||
-          created > Date.now() ||
           expires === undefined ||
-          expires <= created ||
-          verified === undefined ||
-          verified < created ||
-          verified > Date.now()
+          !sessionIdentifiesUser(observed)
         )
           throw denied();
         if (expires <= Date.now()) providerRetirement = "confirmed";

@@ -561,6 +561,7 @@ describe("separate Operations-owned action ceremony", () => {
     expect(readOperationsActionAuthority).toHaveBeenCalled();
   });
   it("private terminal/consume use separate purpose and exact current fresh provider proof", async () => {
+    session.factors.user.verifiedAt = ts(-6000); // Native lookup precedes session persistence; fresh passkey still required.
     row.state = "created";
     row.provider_session_id = provider.sessionId;
     expect((await complete()).status).toBe(200);

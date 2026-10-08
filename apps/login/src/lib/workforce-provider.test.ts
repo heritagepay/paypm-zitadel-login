@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkforceProvider } from "./workforce-provider";
+
+vi.mock("./fingerprint", () => ({ getUserAgent: vi.fn(async () => ({})) }));
 
 const operationKey = randomUUID();
 const timestamp = (ms: number) => ({ seconds: BigInt(Math.floor(ms / 1000)), nanos: (ms % 1000) * 1e6 });
@@ -166,5 +168,67 @@ describe("native reviewed enrollment metadata", () => {
     await expect(provider.attachEnrollment({ ...row, purpose: "login" }, "a".repeat(64))).rejects.toMatchObject({
       code: "enrollment_purpose_mismatch",
     });
+  });
+});
+
+describe("native Session creation and exact lost-response recovery", () => {
+  afterEach(() => vi.useRealTimers());
+  function original() {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-08T17:42:42Z"));
+    const id = randomUUID();
+    const record: any = {
+      id: "provider-session",
+      creationDate: { seconds: BigInt(1791481361), nanos: 712607000 },
+      expirationDate: { seconds: BigInt(1791510161), nanos: 712607000 },
+      factors: { user: { id: "700", organizationId: "300", verifiedAt: { seconds: BigInt(1791481361), nanos: 709949000 } } },
+      metadata: { paypm_workforce_challenge: new TextEncoder().encode(id) },
+    };
+    const row: any = { id, provider_subject: "700", provider_session_id: record.id };
+    const api = {
+      createSession: vi.fn(async () => ({ sessionId: record.id, sessionToken: "synthetic-private-token" })),
+      getSession: vi.fn(async () => ({ session: record })),
+      listSessions: vi.fn(async () => ({ sessions: [record], details: { totalResult: BigInt(1) } })),
+      setSession: vi.fn(),
+      deleteSession: vi.fn(),
+    };
+    return { record, row, api, provider: new WorkforceProvider(api as any, "300") };
+  }
+  it("binds provider-created user lookup to the original subject, OPS and immutable challenge marker", async () => {
+    const { provider, row, api, record } = original();
+    const created = await provider.create(row);
+    expect(created.session).toEqual(record);
+    expect(created.token).toBe("synthetic-private-token");
+    expect(api.createSession).toHaveBeenCalledOnce();
+    expect(api.getSession).toHaveBeenCalledWith({ sessionId: record.id });
+    expect(api.setSession).not.toHaveBeenCalled();
+    expect(await provider.find(row)).toEqual(record);
+    expect(api.createSession).toHaveBeenCalledOnce();
+  });
+  it.each(["subject", "organization", "marker", "missing-user-time", "future-user-time", "expired"])(
+    "rejects changed %s binding without delivery or renewal",
+    async (kind) => {
+      const { provider, row, api, record } = original();
+      if (kind === "subject") record.factors.user.id = "999";
+      if (kind === "organization") record.factors.user.organizationId = "999";
+      if (kind === "marker") record.metadata.paypm_workforce_challenge = new TextEncoder().encode(randomUUID());
+      if (kind === "missing-user-time") record.factors.user.verifiedAt = undefined;
+      if (kind === "future-user-time") record.factors.user.verifiedAt = timestamp(Date.now() + 1);
+      if (kind === "expired") record.expirationDate = timestamp(Date.now() - 1);
+      await expect(provider.read(row)).rejects.toMatchObject({ code: "provider_session_mismatch" });
+      await expect(provider.find(row)).rejects.toThrow();
+      expect(api.createSession).not.toHaveBeenCalled();
+      expect(api.setSession).not.toHaveBeenCalled();
+      expect(api.deleteSession).not.toHaveBeenCalled();
+    },
+  );
+  it("reads exact expired action intent without silently reauthenticating or renewing it", async () => {
+    const { provider, api, record } = original();
+    record.metadata.paypm_workforce_action_intent = new TextEncoder().encode(operationKey);
+    record.expirationDate = timestamp(Date.now() - 1);
+    expect(await provider.inspectActionIntent(operationKey, "700", "paypm_workforce_action_intent")).toEqual(record);
+    await expect(provider.findActionIntent(operationKey, "700")).rejects.toThrow();
+    expect(api.setSession).not.toHaveBeenCalled();
+    expect(api.deleteSession).not.toHaveBeenCalled();
   });
 });

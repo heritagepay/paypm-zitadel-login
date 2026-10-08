@@ -4,7 +4,13 @@ import { RequestChallengesSchema, UserVerificationRequirement } from "@zitadel/p
 import { ChecksSchema, type Checks } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import { createHash } from "crypto";
 import { headers } from "next/headers";
-import { providerTimestampMs, sessionExpiresAt, sessionLifetime, verifiedFactor } from "../authentication-policy";
+import {
+  activeSessionIdentifiesUser,
+  providerTimestampMs,
+  sessionExpiresAt,
+  sessionLifetime,
+  verifiedFactor,
+} from "../authentication-policy";
 import { getSessionCookieById } from "../cookies";
 import { isClassifiedError } from "../grpc/interceptors/error-classification";
 import { getServiceConfig } from "../service-url";
@@ -256,7 +262,7 @@ export async function completeWorkforceAction(command: { requestId: string; asse
       session.id !== state.stepSessionId ||
       new TextDecoder().decode(session.metadata["paypm_workforce_passkey_request_" + state.requestId]) !== assertionHash ||
       session.factors?.user?.id !== state.userId ||
-      !verifiedFactor(session, session.factors.user.verifiedAt) ||
+      !activeSessionIdentifiesUser(session) ||
       session.factors.webAuthN?.userVerified !== true ||
       !verifiedFactor(session, session.factors.webAuthN.verifiedAt) ||
       verified === undefined ||

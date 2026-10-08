@@ -262,7 +262,7 @@ describe("fresh workforce action ceremony producer", () => {
           creationDate: ts(-2000),
           expirationDate: ts(298000),
           factors: {
-            user: { id: "700", organizationId: "300", verifiedAt: ts(-1000) },
+            user: { id: "700", organizationId: "300", verifiedAt: ts(-3000) },
             webAuthN: { verifiedAt: ts(0), userVerified: true },
           },
         },

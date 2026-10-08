@@ -4,7 +4,7 @@ import { SAMLRequest } from "@zitadel/proto/zitadel/saml/v2/authorization_pb";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { GetSessionResponse } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
-import { sessionExpiresAt, verifiedFactor } from "./authentication-policy";
+import { activeSessionIdentifiesUser, verifiedFactor } from "./authentication-policy";
 import { getMostRecentCookieWithLoginname } from "./cookies";
 import { shouldEnforceMFA } from "./verify-helper";
 import { getLoginSettings, getSession, getUserByID, listAuthenticationMethodTypes, ServiceConfig } from "./zitadel";
@@ -54,7 +54,7 @@ export async function isSessionValid({
   }
 
   const now = Date.now();
-  if (sessionExpiresAt(session, now) === undefined || !verifiedFactor(session, session.factors.user.verifiedAt, now)) {
+  if (!activeSessionIdentifiesUser(session, now)) {
     return false;
   }
 
