@@ -66,6 +66,7 @@ export class WorkforceProvider {
       result = await this.api.setSession({
         sessionId: current.id,
         checks: {},
+        metadata: { ...current.metadata },
         lifetime: sessionLifetime(undefined, current),
       });
     if (!result.sessionToken) throw new WorkforceStoreError("provider_token_unconfirmed");
@@ -82,7 +83,8 @@ export class WorkforceProvider {
       await this.api.setSession({
         sessionId: current.id,
         checks: {},
-        metadata: { [key]: bytes(ceremonyHash) },
+        // ZITADEL replaces this map; retain the owned creation and prior evidence.
+        metadata: { ...current.metadata, [key]: bytes(ceremonyHash) },
         lifetime: sessionLifetime(undefined, current),
       });
     const final = await this.read(row);
@@ -94,7 +96,7 @@ export class WorkforceProvider {
       result = await this.api.setSession({
         sessionId: current.id,
         checks: {},
-        metadata: { ["paypm_workforce_delivery_" + row.id]: bytes(row.operation_key) },
+        metadata: { ...current.metadata, ["paypm_workforce_delivery_" + row.id]: bytes(row.operation_key) },
         challenges: create(RequestChallengesSchema, { otpEmail: { deliveryType: { case: "sendCode", value: {} } } }),
         lifetime: sessionLifetime(undefined, current),
       });
@@ -109,7 +111,7 @@ export class WorkforceProvider {
       result = await this.api.setSession({
         sessionId: current.id,
         checks: create(ChecksSchema, { otpEmail: { code } }),
-        metadata: { ["paypm_workforce_attempt_" + attempt.id]: bytes(attempt.code_hash) },
+        metadata: { ...current.metadata, ["paypm_workforce_attempt_" + attempt.id]: bytes(attempt.code_hash) },
         lifetime: sessionLifetime(undefined, current),
       });
     if (!result.sessionToken) throw new WorkforceStoreError("provider_verify_unconfirmed");
@@ -157,7 +159,7 @@ export class WorkforceProvider {
     return (await read()) === undefined;
   }
   /** Restart retirement is bound to the exact challenge metadata, even for expired native Sessions. */
-  async retireEnrollmentChallenge(sessionId: string, row: WorkforceChallenge) {
+  async retireEnrollmentChallenge(sessionId: string, row: WorkforceChallenge, sealedCeremonyHash?: string) {
     if (row.purpose !== "reviewed_enrollment") throw new WorkforceStoreError("enrollment_purpose_mismatch");
     const read = async () => {
       try {
@@ -171,11 +173,20 @@ export class WorkforceProvider {
     };
     const session = await read();
     if (!session) return true;
+    const marker = text(session.metadata[creationKey]);
+    // Legacy metadata replacement can remove creation evidence. Recovery may
+    // use only the exact ceremony independently checked in the owning journal.
+    const sealedLegacyBinding =
+      marker === undefined &&
+      row.provider_session_id === sessionId &&
+      typeof sealedCeremonyHash === "string" &&
+      /^[a-f0-9]{64}$/.test(sealedCeremonyHash) &&
+      text(session.metadata["paypm_workforce_enrollment_" + row.id]) === sealedCeremonyHash;
     if (
       session.id !== sessionId ||
       session.factors?.user?.id !== row.provider_subject ||
       session.factors.user.organizationId !== this.organizationId ||
-      text(session.metadata[creationKey]) !== row.id ||
+      (marker !== row.id && !sealedLegacyBinding) ||
       !sessionIdentifiesUser(session)
     )
       throw new WorkforceStoreError("retirement_provider_binding_changed");

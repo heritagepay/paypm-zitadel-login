@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres, { type Sql } from "postgres";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workforceAssertionHash } from "./workforce-assertion";
 import type { EnrollmentProjection } from "./workforce-enrollment-identity-client";
 import { WorkforceEnrollmentRestart } from "./workforce-enrollment-restart";
 import { WorkforceEnrollmentStore } from "./workforce-enrollment-store";
 import type { WorkforceProvider } from "./workforce-provider";
-import { WorkforceStore } from "./workforce-store";
+import { WorkforceStore, WorkforceStoreError } from "./workforce-store";
 const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL;
 (url ? describe : describe.skip)("durable expired enrollment replacement (isolated PostgreSQL)", () => {
   let admin: Sql,
@@ -87,6 +88,56 @@ const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL;
     imageDigest: "e".repeat(64),
     configurationSha256: "f".repeat(64),
   });
+  it.each(["exact", "changed-person", "changed-session", "changed-hash"])(
+    "legacy metadata recovery requires %s immutable ceremony and parent bindings",
+    async (kind) => {
+      const row = await oldChallenge(true, true);
+      await expire();
+      // Keep this isolated time-shift fixture's ceremony consistent with its
+      // shifted original/challenge. This never touches a live database.
+      const [challenge] = await sql`SELECT created_at,expires_at FROM login_workforce_challenges WHERE id=${row.id}`,
+        [original] =
+          await sql`SELECT expires_at FROM login_reviewed_workforce_enrollments WHERE enrollment_id=${p.enrollmentId}`,
+        [sealed] =
+          await sql`SELECT ceremony FROM login_reviewed_workforce_enrollment_challenges WHERE challenge_id=${row.id}`;
+      const ceremony = {
+        ...sealed.ceremony,
+        issuedAt: challenge.created_at.toISOString(),
+        expiresAt: new Date(Math.min(challenge.expires_at.getTime(), original.expires_at.getTime())).toISOString(),
+      };
+      if (kind === "changed-person") ceremony.personId = randomUUID();
+      if (kind === "changed-session") ceremony.sessionId = "900";
+      const hash = kind === "changed-hash" ? "a".repeat(64) : workforceAssertionHash(ceremony);
+      await sql.begin(async (tx) => {
+        await tx.unsafe(
+          "ALTER TABLE login_reviewed_workforce_enrollment_challenges DISABLE TRIGGER immutable_reviewed_enrollment_challenge",
+        );
+        await tx`UPDATE login_reviewed_workforce_enrollment_challenges SET ceremony=${tx.json(ceremony)},ceremony_hash=${hash} WHERE challenge_id=${row.id}`;
+        await tx.unsafe(
+          "ALTER TABLE login_reviewed_workforce_enrollment_challenges ENABLE TRIGGER immutable_reviewed_enrollment_challenge",
+        );
+      });
+      const intent = await restart.prepare(successor(), "oidc_new", randomUUID()),
+        native = provider();
+      vi.mocked(native.retireEnrollmentChallenge).mockRejectedValueOnce(
+        new WorkforceStoreError("retirement_provider_binding_changed"),
+      );
+      if (kind === "exact") {
+        await restart.retireSessions(intent, native);
+        expect(native.retireEnrollmentChallenge).toHaveBeenLastCalledWith(
+          "800",
+          expect.objectContaining({ id: row.id }),
+          hash,
+        );
+        await restart.activate(intent, successor(), "oidc_new");
+      } else {
+        await expect(restart.retireSessions(intent, native)).rejects.toThrow("retirement_unconfirmed");
+        expect(native.retireEnrollmentChallenge).toHaveBeenCalledOnce();
+        expect(await sql`SELECT * FROM login_reviewed_workforce_restart_session_evidence`).toHaveLength(0);
+        expect(await sql`SELECT * FROM login_reviewed_workforce_enrollment_attempts`).toHaveLength(0);
+      }
+    },
+  );
   it("five concurrent retries preserve original records and append one bounded successor", async () => {
     const row = await oldChallenge(true, true);
     await expire();
