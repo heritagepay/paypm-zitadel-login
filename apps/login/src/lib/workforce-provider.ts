@@ -156,6 +156,36 @@ export class WorkforceProvider {
     }
     return (await read()) === undefined;
   }
+  /** Restart retirement is bound to the exact challenge metadata, even for expired native Sessions. */
+  async retireEnrollmentChallenge(sessionId: string, row: WorkforceChallenge) {
+    if (row.purpose !== "reviewed_enrollment") throw new WorkforceStoreError("enrollment_purpose_mismatch");
+    const read = async () => {
+      try {
+        const session = (await this.api.getSession({ sessionId })).session;
+        if (!session) throw new WorkforceStoreError("provider_retirement_unconfirmed");
+        return session;
+      } catch (error) {
+        if (isClassifiedError(error) && error.code === Code.NotFound) return undefined;
+        throw error;
+      }
+    };
+    const session = await read();
+    if (!session) return true;
+    if (
+      session.id !== sessionId ||
+      session.factors?.user?.id !== row.provider_subject ||
+      session.factors.user.organizationId !== this.organizationId ||
+      text(session.metadata[creationKey]) !== row.id ||
+      !sessionIdentifiesUser(session)
+    )
+      throw new WorkforceStoreError("retirement_provider_binding_changed");
+    try {
+      await this.api.deleteSession({ sessionId });
+    } catch (error) {
+      if (!isClassifiedError(error) || error.code !== Code.NotFound) throw error;
+    }
+    return (await read()) === undefined;
+  }
   async findActionIntent(operationKey: string, subject: string, metadataKey = "paypm_workforce_action_intent") {
     const result = await this.api.listSessions({
       query: { limit: 100, offset: BigInt(0), asc: false },

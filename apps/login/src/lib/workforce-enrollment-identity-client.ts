@@ -118,6 +118,27 @@ export function parseEnrollmentCompletion(value: unknown, id: string, body: unkn
     throw new Error("Original enrollment completion unavailable");
   return p;
 }
+export interface EnrollmentOutcome {
+  enrollmentId: string;
+  personId: string;
+  providerSubject: string;
+  state: "pending" | "completed" | "retired";
+}
+export function parseEnrollmentOutcome(value: unknown, id: string): EnrollmentOutcome {
+  const p = value as EnrollmentOutcome;
+  if (
+    !p ||
+    Array.isArray(p) ||
+    Object.keys(p).sort().join(",") !== "enrollmentId,personId,providerSubject,state" ||
+    p.enrollmentId !== id ||
+    !enrollmentUuid(p.personId) ||
+    typeof p.providerSubject !== "string" ||
+    !/^[1-9]\d{0,39}$/.test(p.providerSubject) ||
+    !["pending", "completed", "retired"].includes(p.state)
+  )
+    throw new Error("Original enrollment outcome unavailable");
+  return p;
+}
 function target(raw: string | undefined, privateIdentityBase = false) {
   if (!raw) throw new Error("Enrollment authority unavailable");
   const u = new URL(raw);
@@ -133,14 +154,18 @@ function target(raw: string | undefined, privateIdentityBase = false) {
   return u;
 }
 /** Separate fixed-route machine authority, never the existing eligibility/action client. */
-export async function enrollmentIdentityRequest(operation: "current" | "complete", id: string, body: unknown = {}) {
-  if (!enrollmentUuid(id) || !["current", "complete"].includes(operation) || !enrollmentRuntime())
+export async function enrollmentIdentityRequest(
+  operation: "current" | "complete" | "outcome",
+  id: string,
+  body: unknown = {},
+) {
+  if (!enrollmentUuid(id) || !["current", "complete", "outcome"].includes(operation) || !enrollmentRuntime())
     throw new Error("Enrollment unavailable");
   if (
     !body ||
     typeof body !== "object" ||
     Array.isArray(body) ||
-    (operation === "current"
+    (operation !== "complete"
       ? Object.keys(body).length !== 0
       : Object.keys(body).sort().join(",") !== "challengeId,sessionId" ||
         !enrollmentUuid((body as any).challengeId) ||
@@ -232,5 +257,9 @@ export async function enrollmentIdentityRequest(operation: "current" | "complete
       ),
     ),
   );
-  return operation === "current" ? parseEnrollmentProjection(result, id) : parseEnrollmentCompletion(result, id, body);
+  return operation === "current"
+    ? parseEnrollmentProjection(result, id)
+    : operation === "outcome"
+      ? parseEnrollmentOutcome(result, id)
+      : parseEnrollmentCompletion(result, id, body);
 }

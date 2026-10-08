@@ -81,7 +81,7 @@ describe("workforce migration standalone artifact", () => {
     expect(result.stderr).not.toContain("Cannot find");
   });
 
-  it("executes the copied runner against all nine packaged files using only a fixture PostgreSQL adapter", async () => {
+  it("executes the copied runner against all checked-in packaged files using only a fixture PostgreSQL adapter", async () => {
     const { source, artifact } = await fixture();
     await packageWorkforceMigrations(source, artifact);
     const result = execute(artifact, true);
@@ -97,7 +97,7 @@ describe("workforce migration standalone artifact", () => {
     );
     expect(output.applied).toEqual(names.map((name, index) => [name.slice(0, -4), checksums[index]]));
     expect(output.sources).toEqual(checksums);
-    expect(output.applied).toHaveLength(9);
+    expect(output.applied).toHaveLength(names.length);
   });
 
   it("rejects dependency drift instead of publishing an unqualified runtime package", async () => {

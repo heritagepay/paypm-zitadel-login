@@ -5,9 +5,11 @@ import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_se
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enrollmentIdentityRequest } from "../workforce-enrollment-identity-client";
+import { WorkforceEnrollmentRestart } from "../workforce-enrollment-restart";
 import { workforceEnrollmentStore } from "../workforce-enrollment-store";
 import { workforceProvider } from "../workforce-provider";
 import { deleteWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
+import { WorkforceStoreError } from "../workforce-store";
 import {
   addOTPEmail,
   getAuthRequest,
@@ -107,9 +109,13 @@ beforeEach(() => {
     userId: "700",
     clientId: "staff-client",
     requestId: "oidc_owned",
+    issuedAt: now - 6000,
+    expiresAt: now + 120000,
   };
   original = {
     enrollment_id: p.enrollmentId,
+    issuer: p.issuer,
+    epoch: "0",
     provider_subject: p.providerSubject,
     client_id: p.clientId,
     request_id: "oidc_owned",
@@ -141,6 +147,9 @@ beforeEach(() => {
       verified: vi.fn(),
       failed: vi.fn(),
     },
+    reserveChallenge: vi.fn(async () => row),
+    attempt: vi.fn(async () => attempt),
+    profileReplacementForAttempt: vi.fn(async () => undefined),
     begin: vi.fn(async () => original),
     original: vi.fn(async () => original),
     matches: vi.fn(),
@@ -162,19 +171,26 @@ beforeEach(() => {
   vi.mocked(enrollmentIdentityRequest).mockImplementation(async (op) =>
     op === "current"
       ? { ...p }
-      : ({
-          enrollmentId: p.enrollmentId,
-          personId: p.personId,
-          policyId: p.policyId,
-          clientId: p.clientId,
-          issuer: p.issuer,
-          organizationId: p.organizationId,
-          evidenceId: row.id,
-          providerSessionId: "800",
-          subject: p.providerSubject,
-          profileClass: "workforce",
-          state: "completed",
-        } as any),
+      : op === "outcome"
+        ? ({
+            enrollmentId: p.enrollmentId,
+            personId: p.personId,
+            providerSubject: p.providerSubject,
+            state: "pending",
+          } as any)
+        : ({
+            enrollmentId: p.enrollmentId,
+            personId: p.personId,
+            policyId: p.policyId,
+            clientId: p.clientId,
+            issuer: p.issuer,
+            organizationId: p.organizationId,
+            evidenceId: row.id,
+            providerSessionId: "800",
+            subject: p.providerSubject,
+            profileClass: "workforce",
+            state: "completed",
+          } as any),
   );
   vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "staff-client" } } as any);
   vi.mocked(getUserByID).mockImplementation(async () => ({ user: structuredClone(user) }) as any);
@@ -223,7 +239,7 @@ describe("reviewed workforce native ownership journey", () => {
       vi.mocked(deliverWorkforceProfileEmail).mock.invocationCallOrder[0],
     );
     expect(provider.verify).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
     expect(writeWorkforceState).toHaveBeenCalledWith(
       expect.objectContaining({
         purpose: "reviewed-workforce-enrollment",
@@ -337,10 +353,7 @@ describe("reviewed workforce native ownership journey", () => {
   it("resend reserves same contact/purpose and retires exact previous challenge", async () => {
     verifiedProfile();
     expect(await resendReviewedWorkforceEnrollment(verify())).toHaveProperty("state", "otp_pending");
-    expect(store.base.reserve).toHaveBeenCalledWith(
-      expect.objectContaining({ contact: p.email, purpose: "reviewed_enrollment" }),
-      row.id,
-    );
+    expect(store.reserveChallenge).toHaveBeenCalledWith(p, expect.any(String), "oidc_owned", row.id);
   });
   it("native callback recipe carries bounded operation in query and code in fragment only", async () => {
     const url = await reviewedWorkforceEmailVerificationTemplate(p.enrollmentId, "oidc_owned");
@@ -360,7 +373,7 @@ describe("readonly original enrollment entry", () => {
     });
     expect(writeWorkforceState).not.toHaveBeenCalled();
     expect(store.begin).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
     expect(provider.verify).not.toHaveBeenCalled();
     expect(getAuthRequest).not.toHaveBeenCalled();
   });
@@ -373,7 +386,7 @@ describe("readonly original enrollment entry", () => {
     });
     expect(writeWorkforceState).not.toHaveBeenCalled();
     expect(store.begin).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
   });
   it("rejects forged client or changed signed original query", async () => {
     vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "other" } } as any);
@@ -398,7 +411,7 @@ describe("readonly original enrollment entry", () => {
     });
     expect(JSON.stringify(result)).not.toContain("never-client-token");
     expect(writeWorkforceState).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
   });
   it("final logout bookend cannot present stale owned challenge", async () => {
     store.original.mockResolvedValueOnce(original).mockRejectedValueOnce(new Error("retired"));
@@ -461,7 +474,7 @@ describe("truthful readonly delivery projection", () => {
     p.emailVerified = false;
     user.type.value.email.isVerified = false;
     expect(await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId })).toHaveProperty("error");
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
     expect(writeWorkforceState).not.toHaveBeenCalled();
   });
 });
@@ -512,7 +525,7 @@ describe("profile send acknowledgement is not delivery or authority", () => {
       await verifyReviewedWorkforceProfileEmail({ operationId: p.enrollmentId, operationKey: randomUUID(), code: "ABC123" }),
     ).toHaveProperty("state", "profile_email_verified");
     expect(deliverWorkforceProfileEmail).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
   });
   it("explicit replacement binds exact previous intent; quota/revocation denials never send", async () => {
     const command = { operationId: p.enrollmentId, operationKey: randomUUID(), attemptId: randomUUID() };
@@ -550,7 +563,7 @@ describe("profile send acknowledgement is not delivery or authority", () => {
     flow.challengeId = row.id;
     expect(await startReviewedWorkforceEnrollment(start())).toHaveProperty("state", "otp_pending");
     expect(deliverWorkforceProfileEmail).not.toHaveBeenCalled();
-    expect(store.base.reserve).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
     expect(
       await replaceReviewedWorkforceProfileEmail({
         operationId: p.enrollmentId,
@@ -558,5 +571,80 @@ describe("profile send acknowledgement is not delivery or authority", () => {
         attemptId: randomUUID(),
       }),
     ).toHaveProperty("error");
+  });
+});
+
+describe("bounded enrollment restart server ownership", () => {
+  it("retires exact prior sessions, re-reads current invitation, then replaces cookie for fresh request", async () => {
+    verifiedProfile();
+    const command = { ...start(), requestId: "oidc_fresh" };
+    original.request_id = command.requestId;
+    original.created_at = new Date(Date.now() - 1000);
+    original.expires_at = new Date(Date.now() + 100000);
+    row.request_id = command.requestId;
+    row.created_at = new Date();
+    store.begin.mockRejectedValueOnce(new WorkforceStoreError("enrollment_restart_required"));
+    const prepare = vi
+        .spyOn(WorkforceEnrollmentRestart.prototype, "prepare")
+        .mockResolvedValue({ operation_key: command.operationKey } as any),
+      retire = vi.spyOn(WorkforceEnrollmentRestart.prototype, "retireSessions").mockResolvedValue(),
+      activate = vi.spyOn(WorkforceEnrollmentRestart.prototype, "activate").mockResolvedValue(original);
+    vi.mocked(deleteWorkforceState).mockImplementation(async () => {
+      flow = undefined;
+    });
+    try {
+      expect(await startReviewedWorkforceEnrollment(command)).toHaveProperty("state", "otp_pending");
+      expect(prepare).toHaveBeenCalledWith(p, command.requestId, command.operationKey);
+      expect(retire.mock.invocationCallOrder[0]).toBeLessThan(activate.mock.invocationCallOrder[0]);
+      expect(activate.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(writeWorkforceState).mock.invocationCallOrder[0]);
+      expect(flow.requestId).toBe(command.requestId);
+      expect(flow.issuedAt).toBe(original.created_at.getTime());
+    } finally {
+      prepare.mockRestore();
+      retire.mockRestore();
+      activate.mockRestore();
+    }
+  });
+  it("native retirement failure prevents successor activation, delivery and cookie rewrite", async () => {
+    store.begin.mockRejectedValueOnce(new WorkforceStoreError("enrollment_restart_required"));
+    const prepare = vi.spyOn(WorkforceEnrollmentRestart.prototype, "prepare").mockResolvedValue({} as any),
+      retire = vi
+        .spyOn(WorkforceEnrollmentRestart.prototype, "retireSessions")
+        .mockRejectedValue(new Error("unknown native creation")),
+      activate = vi.spyOn(WorkforceEnrollmentRestart.prototype, "activate");
+    try {
+      expect(await startReviewedWorkforceEnrollment(start())).toHaveProperty("error");
+      expect(activate).not.toHaveBeenCalled();
+      expect(writeWorkforceState).not.toHaveBeenCalled();
+      expect(deliverWorkforceProfileEmail).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      retire.mockRestore();
+      activate.mockRestore();
+    }
+  });
+  it("an old cookie timestamp cannot verify a new attempt even with matching Person/request", async () => {
+    verifiedProfile();
+    flow.issuedAt -= 1;
+    expect(await verifyReviewedWorkforceEnrollment(verify())).toHaveProperty("error");
+    expect(provider.verify).not.toHaveBeenCalled();
+  });
+});
+
+describe("uncertain canonical completion cannot restart credentials", () => {
+  it.each(["completed", "retired", "unknown"])("denies %s outcome before begin/create/delivery", async (state) => {
+    vi.mocked(enrollmentIdentityRequest).mockImplementation(async (op) =>
+      op === "current"
+        ? p
+        : op === "outcome"
+          ? state === "unknown"
+            ? Promise.reject(new Error("owner unavailable"))
+            : { enrollmentId: p.enrollmentId, personId: p.personId, providerSubject: p.providerSubject, state }
+          : ({} as any),
+    );
+    expect(await startReviewedWorkforceEnrollment(start())).toHaveProperty("error");
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(writeWorkforceState).not.toHaveBeenCalled();
+    expect(deliverWorkforceProfileEmail).not.toHaveBeenCalled();
   });
 });

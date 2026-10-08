@@ -282,7 +282,7 @@ const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL;
       if (kind === "expired") {
         await sql.begin(async (tx) => {
           await tx.unsafe("ALTER TABLE login_reviewed_workforce_enrollments DISABLE TRIGGER immutable_reviewed_enrollment");
-          await tx`UPDATE login_reviewed_workforce_enrollments SET created_at=clock_timestamp()-interval '6 minutes',expires_at=clock_timestamp()-interval '1 minute' WHERE enrollment_id=${p.enrollmentId}`;
+          await tx`UPDATE login_reviewed_workforce_enrollments SET created_at=statement_timestamp()-interval '6 minutes',expires_at=statement_timestamp()-interval '1 minute' WHERE enrollment_id=${p.enrollmentId}`;
           await tx.unsafe("ALTER TABLE login_reviewed_workforce_enrollments ENABLE TRIGGER immutable_reviewed_enrollment");
         });
       }

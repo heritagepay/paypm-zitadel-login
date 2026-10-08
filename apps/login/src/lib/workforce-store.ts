@@ -130,10 +130,14 @@ export class WorkforceStore {
       WHERE created_at>clock_timestamp()-interval '10 minutes'`;
     if (quota.count >= 3 || quota.recent) throw new WorkforceStoreError("workforce_delivery_rate_limited");
   }
-  async reserve(input: WorkforceChallengeBinding, previousId?: string): Promise<WorkforceChallenge> {
+  async reserve(
+    input: WorkforceChallengeBinding,
+    previousId?: string,
+    transaction?: TransactionSql,
+  ): Promise<WorkforceChallenge> {
     const contactHash = this.emailQuotaHash(input.issuer, input.contact),
       requestHash = hash(JSON.stringify({ ...input, contact: contactHash, previousId: previousId ?? null }));
-    return this.sql.begin(async (tx) => {
+    const reserve = async (tx: TransactionSql) => {
       await tx`SELECT pg_advisory_xact_lock(hashtextextended(${contactHash},0))`;
       await tx`INSERT INTO login_workforce_epochs(issuer,provider_subject) VALUES(${input.issuer},${input.userId}) ON CONFLICT DO NOTHING`;
       const [epoch] = await tx<
@@ -171,7 +175,8 @@ export class WorkforceStore {
               WorkforceChallenge[]
             >`INSERT INTO login_workforce_challenges(id,operation_key,issuer,provider_subject,client_id,request_id,contact_hash,request_hash,epoch) VALUES(${randomUUID()},${input.operationKey},${input.issuer},${input.userId},${input.clientId},${input.requestId},${contactHash},${requestHash},${epoch.epoch}) RETURNING *`;
       return row;
-    });
+    };
+    return transaction ? reserve(transaction) : this.sql.begin(reserve);
   }
   async challenge(id: string, sql: Connection = this.sql, lock = false): Promise<WorkforceChallenge> {
     const rows = lock
@@ -273,9 +278,14 @@ export class WorkforceStore {
       await tx`INSERT INTO login_workforce_revocations(provider_session_id) VALUES(${sessionId}) ON CONFLICT DO NOTHING`;
     });
   }
-  async attempt(id: string, operationKey: string, code: string): Promise<WorkforceAttempt & { first: boolean }> {
+  async attempt(
+    id: string,
+    operationKey: string,
+    code: string,
+    transaction?: TransactionSql,
+  ): Promise<WorkforceAttempt & { first: boolean }> {
     const codeHash = this.index("paypm-workforce-otp-attempt-v1", `${id}:${code}`);
-    return this.sql.begin(async (tx) => {
+    const verifyAttempt = async (tx: TransactionSql) => {
       const row = await this.challenge(id, tx, true);
       const [old] = await tx<WorkforceAttempt[]>`SELECT * FROM login_workforce_attempts WHERE operation_key=${operationKey}`;
       if (old) {
@@ -292,7 +302,8 @@ export class WorkforceStore {
         WorkforceAttempt[]
       >`INSERT INTO login_workforce_attempts(id,operation_key,challenge_id,code_hash) VALUES(${randomUUID()},${operationKey},${id},${codeHash}) RETURNING *`;
       return { ...attempt, first: true };
-    });
+    };
+    return transaction ? verifyAttempt(transaction) : this.sql.begin(verifyAttempt);
   }
   async failed(attemptId: string) {
     await this
