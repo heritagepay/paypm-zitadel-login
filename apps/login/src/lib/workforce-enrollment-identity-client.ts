@@ -118,10 +118,17 @@ export function parseEnrollmentCompletion(value: unknown, id: string, body: unkn
     throw new Error("Original enrollment completion unavailable");
   return p;
 }
-function target(raw: string | undefined) {
+function target(raw: string | undefined, privateIdentityBase = false) {
   if (!raw) throw new Error("Enrollment authority unavailable");
   const u = new URL(raw);
-  if (u.username || u.password || u.search || u.hash || u.protocol !== "https:")
+  if (
+    u.username ||
+    u.password ||
+    u.search ||
+    u.hash ||
+    (u.protocol !== "https:" &&
+      !(privateIdentityBase && raw === "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api"))
+  )
     throw new Error("Registered enrollment authority required");
   return u;
 }
@@ -141,7 +148,7 @@ export async function enrollmentIdentityRequest(operation: "current" | "complete
         !/^[1-9]\d{0,39}$/.test((body as any).sessionId))
   )
     throw new Error("Closed enrollment command required");
-  const base = target(process.env.PAYPM_WORKFORCE_IDENTITY_URL),
+  const base = target(process.env.PAYPM_WORKFORCE_IDENTITY_URL, true),
     tokenUrl = target(process.env.PAYPM_WORKFORCE_IDENTITY_TOKEN_URL);
   const client = process.env.PAYPM_WORKFORCE_ENROLLMENT_IDENTITY_CLIENT_ID,
     secret = process.env.PAYPM_WORKFORCE_ENROLLMENT_IDENTITY_CLIENT_SECRET,

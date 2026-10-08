@@ -136,4 +136,94 @@ describe("closed purpose-specific Identity authority", () => {
       parseEnrollmentCompletion({ ...p, providerSessionId: "801" }, id, { challengeId: challenge, sessionId: "800" }),
     ).toThrow();
   });
+  it.each(["current", "complete"] as const)(
+    "uses exact canonical private HTTP base for %s while the token remains TLS",
+    async (operation) => {
+      vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_URL", "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api");
+      const result = operation === "current" ? projection() : completion();
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ access_token: "private-token", token_type: "Bearer" }))
+        .mockResolvedValueOnce(Response.json(result));
+      vi.stubGlobal("fetch", fetch);
+      const body = operation === "current" ? {} : { challengeId: challenge, sessionId: "800" };
+      expect(await enrollmentIdentityRequest(operation, id, body)).toEqual(result);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(String(fetch.mock.calls[0][0])).toBe("https://auth.paypm.test/oauth/v2/token");
+      expect(String(fetch.mock.calls[1][0])).toBe(
+        `http://heritagepay-identity-api.identity.svc.cluster.local:3000/api/internal/v1/reviewed-workforce-enrollments/${id}/${operation}`,
+      );
+      expect(fetch.mock.calls[1][1]).toMatchObject({
+        method: "POST",
+        cache: "no-store",
+        redirect: "error",
+        body: JSON.stringify(body),
+        headers: { authorization: "Bearer private-token", "content-type": "application/json" },
+      });
+      expect(fetch.mock.calls[0][1].signal).toBe(fetch.mock.calls[1][1].signal);
+    },
+  );
+  it.each([
+    "http://heritagepay-identity-api.identity.svc.cluster.local/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:80/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3001/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:03000/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api/",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api/current",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api/../api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/%61pi",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api?",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api?x=1",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api#",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api#x",
+    "http://user@heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    "http://user:password@heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    "http://@heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local.:3000/api",
+    "http://HERITAGEPAY-IDENTITY-API.identity.svc.cluster.local:3000/api",
+    "HTTP://heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    " http://heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api ",
+    "http://heritagepay-identity-api.identity.svc:3000/api",
+    "http://heritagepay-identity-api:3000/api",
+    "http://heritagepay-identity-api.other.svc.cluster.local:3000/api",
+    "http://heritagepay-identity-api.identity.svc.cluster.local.evil.test:3000/api",
+    "http://identity.paypm.test:3000/api",
+    "http://127.0.0.1:3000/api",
+    "http://localhost:3000/api",
+    "http://[::1]:3000/api",
+    "//heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+    "ftp://heritagepay-identity-api.identity.svc.cluster.local:3000/api",
+  ])("rejects neighboring or normalized HTTP base %s before any token request", async (base) => {
+    vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_URL", base);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(enrollmentIdentityRequest("current", id)).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["http://heritagepay-identity-api.identity.svc.cluster.local:3000/api", "http://auth.paypm.test/oauth/v2/token"])(
+    "never extends the HTTP exception to token URL %s",
+    async (tokenUrl) => {
+      vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_URL", "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api");
+      vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_TOKEN_URL", tokenUrl);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      await expect(enrollmentIdentityRequest("current", id)).rejects.toThrow();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it("preserves the existing HTTPS base trailing-slash behavior", async () => {
+    vi.stubEnv("PAYPM_WORKFORCE_IDENTITY_URL", "https://identity.paypm.test/api/");
+    const p = projection();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ access_token: "private-token", token_type: "Bearer" }))
+      .mockResolvedValueOnce(Response.json(p));
+    vi.stubGlobal("fetch", fetch);
+    expect(await enrollmentIdentityRequest("current", id)).toEqual(p);
+    expect(String(fetch.mock.calls[1][0])).toBe(
+      `https://identity.paypm.test/api/internal/v1/reviewed-workforce-enrollments/${id}/current`,
+    );
+  });
 });
