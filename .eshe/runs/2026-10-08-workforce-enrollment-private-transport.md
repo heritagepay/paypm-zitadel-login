@@ -1,0 +1,15 @@
+# Reviewed workforce enrollment canonical private transport
+
+Owner: shared Login authentication plane; authorized actor is the existing purpose-specific enrollment machine, denied actors are foreign/shared clients and browser-selected authority. Identity owns enrollment/Person truth; ZITADEL owns token/session truth. No UI/copy change; design tier is inapplicable.
+
+Baseline is the actual deployed515 tree7e923599dfa5540eb227ba1be875fbb5faee7b07, normal release-branch merge5d428271995727947423de7bdff45f531624ea0a. Canonical branch `paypm-v4.15.3` was freshly fetched and remains exact; the fork's unrelated upstream-style `main` is preserved. New isolated worktree owns only the existing enrollment client/test plus this run and apps/login/docs/workforce-enrollment-private-transport.md.
+
+Source-confirmed mismatch: Identity global `/api` plus internal controller implies private `/api/internal/v1/...`; the old client rejected all HTTP before fetch. Two meaningful baseline current/complete counterexamples failed, while51 other tests passed. The correction accepts only the exact raw canonical private API base. Token endpoint stays HTTPS-only. Neighboring/normalizing HTTP URLs and using the exception for token transport deny before fetch; existing HTTPS behavior stays intact.
+
+Preserve PKCE, cookies, session/OTP/runtime/claims/capabilities, original commands, timeout/body/no-store/redirect guards, all source outside four paths, and current public packaging/SQL009. No public ingress, secret/configuration/DNS/SQL/provider/account/Git delivery/image/deployment/device action. Local source quality and release/runtime/actor proof remain distinct; final local results are recorded after checks.
+
+## Final local source qualification
+
+Focused53/0; full default Vitest1700passed/76skipped across104passed/7skipped suites. The76 database opt-in cases remain skipped because no test SQL URL is supplied; no database or provider action was executed. Original Next webpack source build with `/ui/v2/login` and production-only types passed. Focused/full ESLint has0errors and one unchanged incumbent security-settings console warning. Owned formatting passed. Standalone full TypeScript retains exactly33 baseline diagnostics with zero owned diagnostics, independently compared through original Git-blob compiler-host overlays; this is not full standalone TypeScript green.
+
+Default offline owned-source scan0 and all materialized unleased bytes/modes plus all9647 baseline Git index objects remain exact, with sparse omissions represented as original committed objects, not invented filesystem proof. Source scope stays exactly two modified and two new leased files; dependency facade is a reused ignored symlink, with no local package installation or lockfile/workflow change. Initial missing-doc sparse-fixture hold and launcher-path hold are retained separately. Baseline two real private-base failures, final exact request routes, HTTPS-only token tests and neighboring URL denials are retained. No image/deployment/runtime or authorized original enrollment actor proof is claimed.
