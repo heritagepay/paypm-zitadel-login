@@ -370,6 +370,7 @@ async function dispatch(row: IdentityActionRow) {
   return json({ requestId: row.id, expiresAt: row.expires_at.toISOString(), redirectUrl: url.href });
 }
 export async function startIdentityAction(request: Request, predecessorId?: string) {
+  let stage = "private-request";
   try {
     if (predecessorId && !identityUuid(predecessorId)) throw deny();
     privateRoute(request, "PAYPM_IDENTITY_ACTION_BFF_TOKEN", predecessorId ? `/${predecessorId}/continue` : "");
@@ -394,8 +395,10 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
     )
       throw deny();
     const pair = { idToken: v.idToken, accessToken: v.accessToken, nonce: v.nonce, clientId: v.clientId };
+    stage = "current-authority";
     const initial = await currentBinding(pair, { expected: v.expected, command: v.command, caseId: v.operationKey }),
       s = identityActionStore();
+    stage = "store-maintenance";
     await s.clearExpired();
     let previous: IdentityActionRow | undefined;
     if (predecessorId) {
@@ -424,6 +427,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
       callbackUrl: callback(pair.clientId, initial.binding.command),
     };
     // Capability is regenerated only for an actual new reservation; hash excludes it, so retry returns the server-custodied original.
+    stage = "reserve-original";
     const row = await s.reserve({
       id: v.requestId,
       binding: initial.binding,
@@ -431,8 +435,11 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
       material,
       predecessor: previous,
     });
+    stage = "provider-dispatch";
     return await dispatch(row);
-  } catch {
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[a-z0-9_]{1,80}$/.test(error.code) ? error.code : "unavailable";
+    console.error(JSON.stringify({context: "identity-action-start", stage, code}));
     return failure();
   }
 }
