@@ -176,6 +176,36 @@ export class IdentityActionStore {
       return row;
     });
   }
+  /** An Identity-only successor may never have reached this journal. Resolve only
+   * an expired unregistered local ancestor; Identity must still prove the exact
+   * missing predecessor and fresh successor before reservation. */
+  async observeUnregisteredMembershipContinuation(id: string, binding: IdentityActionBinding, requestId: string) {
+    return this.sql.begin(async (tx) => {
+      await this.admission(tx, binding, requestId);
+      const rows = await tx<IdentityActionRow[]>`SELECT * FROM login_identity_action_requests WHERE id=${id} OR (operation_key=${binding.caseId} AND binding->'expected'->>'personId'=${binding.expected.personId} AND binding->'expected'->>'action'=${binding.expected.action}) FOR SHARE`;
+      const exact = rows.find((r) => r.id === id);
+      if (exact) {
+        if (!sameIdentityOwner(exact.binding.expected, binding.expected) || !sameIdentityBinding(exact.binding.command, binding.command) || exact.operation_key !== binding.caseId)
+          throw new WorkforceStoreError("identity_action_conflict");
+        return exact;
+      }
+      if (!rows.length || rows.length > 32 || rows.some((r) =>
+        r.operation_key !== binding.caseId || !sameIdentityOwner(r.binding.expected, binding.expected) ||
+        !sameIdentityBinding(r.binding.command, binding.command) || !this.closedUnregisteredMembership(r)))
+        throw new WorkforceStoreError("identity_action_original_required");
+      const leaves = rows.filter((r) => !rows.some((next) => next.predecessor_request_id === r.id));
+      if (leaves.length !== 1) throw new WorkforceStoreError("identity_action_conflict");
+      return leaves[0];
+    });
+  }
+  closedUnregisteredMembership(row: IdentityActionRow) {
+    return row.binding.command.purpose === "commercial_membership" && row.state === "retired" &&
+      row.expires_at.getTime() <= Date.now() && !row.provider_conflicted &&
+      row.provider_session_id === null && row.proof_id === null && row.assertion_hash === null &&
+      row.verification_started_at === null && row.verified_at === null && row.receipt_hash === null &&
+      row.caller_material_sealed === null && row.provider_material_sealed === null &&
+      row.assertion_sealed === null && row.receipt_sealed === null;
+  }
   async capability(id: string, value: string, terminal = false) {
     const row = await this.row(id, terminal);
     if (

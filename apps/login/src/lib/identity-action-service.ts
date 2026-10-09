@@ -431,12 +431,15 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
     await s.clearExpired();
     let previous: IdentityActionRow | undefined;
     if (predecessorId) {
-      previous = await s.observe(predecessorId, initial.binding, initial.requestId);
+      previous = initial.binding.command.purpose === "commercial_membership"
+        ? await s.observeUnregisteredMembershipContinuation(predecessorId, initial.binding, initial.requestId)
+        : await s.observe(predecessorId, initial.binding, initial.requestId);
       if (!previous || !sameIdentityOwner(previous.binding.expected, v.expected) || previous.id === v.requestId)
         throw deny();
       const r = await retirement(previous);
+      const closedUnregistered = s.closedUnregisteredMembership(previous);
       if (
-        r === "pending" ||
+        (r === "pending" && !closedUnregistered) ||
         (previous.expires_at.getTime() > Date.now() && !["cancelled", "retired"].includes(previous.state))
       )
         throw deny();
@@ -445,6 +448,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
         expected: previous.binding.expected,
         proofId: previous.proof_id,
         stepSessionId: previous.provider_session_id,
+        ...(closedUnregistered ? { predecessorRequestId: predecessorId, successorRequestId: v.requestId } : {}),
       });
       await s.retire(previous.id);
       previous = { ...previous, state: "retired" };
