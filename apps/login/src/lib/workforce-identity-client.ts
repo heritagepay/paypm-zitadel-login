@@ -1,5 +1,5 @@
 import "server-only";
-function url(value: string | undefined) {
+function url(value: string | undefined, privateIdentityBase = false) {
   if (!value) throw new Error("Identity service unavailable");
   const parsed = new URL(value);
   if (
@@ -8,6 +8,7 @@ function url(value: string | undefined) {
     parsed.search ||
     parsed.hash ||
     (parsed.protocol !== "https:" &&
+      !(privateIdentityBase && value === "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api") &&
       !(
         process.env.NODE_ENV !== "production" &&
         parsed.protocol === "http:" &&
@@ -25,7 +26,7 @@ export async function workforceIdentityRequest(path: string, body: unknown): Pro
     )
   )
     throw new Error("Unregistered Identity contract");
-  const base = url(process.env.PAYPM_WORKFORCE_IDENTITY_URL),
+  const base = url(process.env.PAYPM_WORKFORCE_IDENTITY_URL, true),
     tokenUrl = url(process.env.PAYPM_WORKFORCE_IDENTITY_TOKEN_URL);
   const clientId = process.env.PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_ID,
     secret = process.env.PAYPM_IDENTITY_ACTION_IDENTITY_CLIENT_SECRET,
