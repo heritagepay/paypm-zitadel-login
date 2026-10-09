@@ -20,7 +20,7 @@ export function IdentityActionPasskey({ requestId, capability }: { requestId: st
     [cancelling, setCancelling] = useState(false),
     [error, setError] = useState(false),
     [now, setNow] = useState(0);
-  const base = `/api/identity/actions/${encodeURIComponent(requestId)}`;
+  const base = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/identity/actions/${encodeURIComponent(requestId)}`;
   function callback(value: unknown) {
     if (typeof value !== "string") throw new Error("unavailable");
     const url = new URL(value);
