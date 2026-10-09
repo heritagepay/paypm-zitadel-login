@@ -1,3 +1,5 @@
 # Exact ordinary membership ceremony
 
 Extend the existing original Identity action channel with one closed commercial_membership purpose: exact operation, Business and Person UUIDs, role=member only. Identity remains authorization and association owner. Login only orchestrates provider verification and preserves exact original bindings. Fresh UP/UV, receipt expiry, session fences, callback allowlist, cancellation and uncertain-state journals remain unchanged. No credentials, grants, tests, domain ownership, copy or layout change. Runtime base d3d55d retains deployed custom Login integrations.
+
+Actual runtime follow-up: original membership row reached Identity but Login had no matching row. Read-only database metadata confirmed login_identity_action_requests_binding_check accepts Wallet linkage only. Add one checksum-journalled 011 migration for the ordinary member action, preserving the original ten SQL files, immutable trigger and existing table ownership. No new database role or credential. Apply through the dedicated existing migrator before resuming the original browser request.
