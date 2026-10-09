@@ -66,7 +66,7 @@ export async function workforceIdentityRequest(path: string, body: unknown): Pro
     method: "POST",
     cache: "no-store",
     redirect: "error",
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(25000),
     headers: { authorization: `Bearer ${token.access_token}`, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
