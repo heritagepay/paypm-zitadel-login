@@ -245,6 +245,52 @@ describe("reviewed workforce enrollment presentation", () => {
       expect.objectContaining({ challengeId: secondChallengeId, code: "87654321" }),
     );
   });
+  it.each(["en", "fr"])("disables an already expired verified proof on entry in %s", (locale) => {
+    const copy = locale === "fr" ? fr.workforceEnrollment : en.workforceEnrollment;
+    mount({ ...otp(), state: "identity_link_pending", expiresAt: new Date(Date.now() - 1).toISOString() }, locale);
+    expect(screen.getByRole("heading", { name: copy.requestTitle })).toBeInTheDocument();
+    expect(screen.getByText(copy.requestBody)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(copy.expired);
+    expect(screen.getByRole("button", { name: copy.complete })).toBeDisabled();
+    expect(screen.getByRole("button", { name: copy.check })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: copy.cancel })).toBeNull();
+    expect(completeReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+    expect(startReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+  });
+  it.each(["en", "fr"])("continues the expiry clock after actual OTP verification in %s", async (locale) => {
+    vi.useFakeTimers();
+    const copy = locale === "fr" ? fr.workforceEnrollment : en.workforceEnrollment;
+    mount(otp(), locale);
+    change("12345678", copy.sessionCodeLabel);
+    await click(copy.sessionSubmit);
+    expect(screen.getByRole("button", { name: copy.complete })).toBeEnabled();
+    await act(() => vi.advanceTimersByTime(300000));
+    expect(screen.getByRole("button", { name: copy.complete })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: copy.requestTitle })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(copy.expired);
+    expect(completeReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+  });
+  it("rejects a completion click at the deadline before the next timer render", async () => {
+    vi.useFakeTimers();
+    const original = otp();
+    mount({ ...original, state: "identity_link_pending" });
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.complete })).toBeEnabled();
+    // Advancing the wall clock alone reproduces background-tab timer throttling.
+    vi.setSystemTime(new Date(original.expiresAt));
+    await click(en.workforceEnrollment.complete);
+    expect(completeReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.complete })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(en.workforceEnrollment.expired);
+  });
+  it("does not restore a verified session indicator after proof expiry", async () => {
+    vi.useFakeTimers();
+    mount({ ...otp(), state: "identity_link_pending" });
+    const session = screen.getByText(en.workforceEnrollment.stepSession).closest("li")!;
+    expect(session.className).toContain("verified");
+    await act(() => vi.advanceTimersByTime(300000));
+    expect(session.className).not.toContain("verified");
+    expect(screen.getByText(en.workforceEnrollment.verifiedEmail)).toBeInTheDocument();
+  });
   it("disables expired OTP verification and resend without automatically issuing a replacement", async () => {
     vi.useFakeTimers();
     mount(otp());

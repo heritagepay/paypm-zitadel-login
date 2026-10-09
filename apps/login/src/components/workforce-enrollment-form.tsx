@@ -144,9 +144,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   const state = view?.state;
   const profile = state === "profile_email_verification_pending";
   const otp = state === "otp_pending";
+  const linking = state === "identity_link_pending";
   const completed = state === "enrollment_completed_access_pending";
   const terminal = completed || state === "cancelled";
-  const expired = (otp || profile) && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
+  const expired = (otp || profile || linking) && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
   const remaining = view?.resendAt ? Math.max(0, Math.ceil((Date.parse(view.resendAt) - now) / 1000)) : 0;
   const currentCode = formattedCode(code);
   const codeValid = profile ? /^[A-Z0-9]{6}$/.test(currentCode) : /^\d{8}$/.test(currentCode);
@@ -154,6 +155,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     validOperation &&
     !!view?.requestId &&
     !terminal &&
+    !expired &&
     state !== "ready_to_start" &&
     state !== "oidc_request_required" &&
     busy !== "cancel" &&
@@ -186,10 +188,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   }, []);
 
   useEffect(() => {
-    if (!otp && !profile) return;
+    if (!otp && !profile && !linking) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [otp, profile]);
+  }, [otp, profile, linking]);
 
   useEffect(() => {
     if (profile || otp) input.current?.focus();
@@ -292,13 +294,15 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   }
 
   const proofEmail = state === "profile_email_verified" || otp || state === "identity_link_pending" || completed;
-  const proofSession = state === "identity_link_pending" || completed;
+  const proofSession = (linking && !expired) || completed;
   const title = completed
     ? "completeTitle"
     : state === "cancelled"
       ? "cancelledTitle"
-      : state === "identity_link_pending"
-        ? "linkTitle"
+      : linking
+        ? expired
+          ? "requestTitle"
+          : "linkTitle"
         : otp
           ? "sessionTitle"
           : state === "profile_email_verified"
@@ -314,8 +318,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     ? "completeBody"
     : state === "cancelled"
       ? "cancelledBody"
-      : state === "identity_link_pending"
-        ? "linkBody"
+      : linking
+        ? expired
+          ? "requestBody"
+          : "linkBody"
         : otp
           ? "sessionBody"
           : state === "profile_email_verified"
@@ -486,12 +492,18 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             <ArrowRightIcon className={styles.icon} aria-hidden="true" />
           </button>
         )}
-        {state === "identity_link_pending" && (
+        {linking && (
           <button
             type="button"
             className={`${styles.button} ${styles.primary}`}
-            disabled={!!busy || unconfirmed}
+            disabled={!!busy || unconfirmed || expired}
             onClick={() => {
+              // Background tabs may throttle the interval: check the wall clock at dispatch too.
+              const clickedAt = Date.now();
+              if (!view?.expiresAt || clickedAt >= Date.parse(view.expiresAt)) {
+                setNow(clickedAt);
+                return;
+              }
               if (view?.challengeId)
                 void run("complete", () =>
                   completeReviewedWorkforceEnrollment({

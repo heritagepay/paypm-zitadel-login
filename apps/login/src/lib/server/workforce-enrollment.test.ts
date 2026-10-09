@@ -59,6 +59,7 @@ const start = () => ({ operationId: p.enrollmentId, requestId: "oidc_owned", ope
 const verify = () => ({ operationId: p.enrollmentId, challengeId: row.id, operationKey: randomUUID(), code: "12345678" });
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.spyOn(WorkforceEnrollmentRestart.prototype, "inspectEntry").mockResolvedValue("ready_to_start");
   for (const [k, v] of Object.entries({
     NEXT_PUBLIC_BASE_PATH: "/ui/v2/login",
     PAYPM_WORKFORCE_ISSUER: "https://auth.paypm.test",
@@ -387,6 +388,50 @@ describe("readonly original enrollment entry", () => {
     expect(writeWorkforceState).not.toHaveBeenCalled();
     expect(store.begin).not.toHaveBeenCalled();
     expect(store.reserveChallenge).not.toHaveBeenCalled();
+  });
+  it("shows fresh-request guidance for the expired original request without creating a flow", async () => {
+    vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+    vi.mocked(WorkforceEnrollmentRestart.prototype.inspectEntry).mockResolvedValue("oidc_request_required");
+    expect(await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" })).toEqual({
+      email: p.email,
+      state: "oidc_request_required",
+    });
+    expect(WorkforceEnrollmentRestart.prototype.inspectEntry).toHaveBeenCalledWith(p, "oidc_owned");
+    expect(writeWorkforceState).not.toHaveBeenCalled();
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+  });
+  it.each(["enrollment_not_current", "enrollment_binding_changed", "enrollment_invitation_changed"])(
+    "does not offer a new start when read-only custody rejects %s",
+    async (reason) => {
+      vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+      vi.mocked(WorkforceEnrollmentRestart.prototype.inspectEntry).mockRejectedValue(new WorkforceStoreError(reason));
+      expect(
+        await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" }),
+      ).toHaveProperty("error");
+      expect(store.begin).not.toHaveBeenCalled();
+      expect(workforceProvider).not.toHaveBeenCalled();
+    },
+  );
+  it("does not offer a fresh enrollment after Identity reports a completed outcome", async () => {
+    vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+    vi.mocked(enrollmentIdentityRequest).mockImplementation(async (op) =>
+      op === "current"
+        ? p
+        : ({
+            enrollmentId: p.enrollmentId,
+            personId: p.personId,
+            providerSubject: p.providerSubject,
+            state: "completed",
+          } as any),
+    );
+    expect(
+      await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" }),
+    ).toHaveProperty("error");
+    expect(WorkforceEnrollmentRestart.prototype.inspectEntry).not.toHaveBeenCalled();
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
   });
   it("rejects forged client or changed signed original query", async () => {
     vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "other" } } as any);

@@ -45,6 +45,31 @@ export class WorkforceEnrollmentRestart {
       throw new WorkforceStoreError("enrollment_not_current");
     return previous;
   }
+  /** Read-only presentation eligibility; only start/prepare may replace an expired attempt. */
+  async inspectEntry(p: EnrollmentProjection, requestId: string) {
+    const binding = this.store.binding(p, requestId);
+    return this.store.base.sql.begin("isolation level repeatable read read only", async (tx) => {
+      const [root] = await tx<
+        EnrollmentOriginal[]
+      >`SELECT * FROM login_reviewed_workforce_enrollments WHERE enrollment_id=${p.enrollmentId}`;
+      if (!root) return "ready_to_start" as const;
+      if (root.binding_hash !== workforceAssertionHash(root.binding))
+        throw new WorkforceStoreError("enrollment_binding_changed");
+      const previous = await this.store.custody(p.enrollmentId, tx);
+      this.identity(root.binding, binding);
+      this.identity(previous.binding, binding);
+      const [epoch] = await tx<
+        { epoch: string }[]
+      >`SELECT epoch FROM login_workforce_epochs WHERE issuer=${previous.issuer} AND provider_subject=${previous.provider_subject}`;
+      if (!epoch || String(epoch.epoch) !== String(previous.epoch) || previous.retirement)
+        throw new WorkforceStoreError("enrollment_not_current");
+      if (previous.expires_at.getTime() <= Date.now())
+        return requestId === previous.request_id ? ("oidc_request_required" as const) : ("ready_to_start" as const);
+      this.store.matches(previous, p);
+      if (requestId !== previous.request_id) throw new WorkforceStoreError("enrollment_binding_changed");
+      return "ready_to_start" as const;
+    });
+  }
   async prepare(p: EnrollmentProjection, requestId: string, operationKey: string) {
     const binding = this.store.binding(p, requestId);
     return this.store.base.sql.begin(async (tx) => {

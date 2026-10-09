@@ -88,6 +88,79 @@ const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL;
     imageDigest: "e".repeat(64),
     configurationSha256: "f".repeat(64),
   });
+  async function rowCounts() {
+    const tables = (await sql<{ tablename: string }[]>`SELECT tablename FROM pg_tables WHERE schemaname=${schema}`)
+      .map((r) => r.tablename)
+      .sort();
+    const counts: Record<string, number> = {};
+    for (const table of tables) {
+      const [row] = await sql.unsafe(`SELECT count(*)::int count FROM ${table}`);
+      counts[table] = row.count;
+    }
+    return counts;
+  }
+  it("classifies missing custody without creating an epoch, enrollment or delivery", async () => {
+    const before = await rowCounts();
+    expect(await restart.inspectEntry({ ...p, enrollmentId: randomUUID() }, "oidc_new")).toBe("ready_to_start");
+    expect(await rowCounts()).toEqual(before);
+  });
+  it("reads current original request without renewal and denies another request while current", async () => {
+    const before = await rowCounts();
+    expect(await restart.inspectEntry(p, "oidc_old")).toBe("ready_to_start");
+    await expect(restart.inspectEntry(p, "oidc_new")).rejects.toMatchObject({ code: "enrollment_binding_changed" });
+    await expect(restart.inspectEntry(successor(), "oidc_old")).rejects.toMatchObject({
+      code: "enrollment_binding_changed",
+    });
+    expect(await rowCounts()).toEqual(before);
+  });
+  it("classifies expired original versus fresh request while preserving every journal", async () => {
+    await oldChallenge(true, true);
+    await expire();
+    const before = await rowCounts();
+    expect(await restart.inspectEntry(successor(), "oidc_old")).toBe("oidc_request_required");
+    expect(await restart.inspectEntry(successor(), "oidc_new")).toBe("ready_to_start");
+    expect(await rowCounts()).toEqual(before);
+    await expect(restart.prepare(successor(), "oidc_old", randomUUID())).rejects.toMatchObject({
+      code: "fresh_enrollment_request_required",
+    });
+  });
+  it.each(["personId", "policyId", "issuer", "organizationId", "clientId", "providerSubject", "email"] as const)(
+    "denies expired-request readback when canonical %s changes",
+    async (key) => {
+      await expire();
+      await expect(restart.inspectEntry({ ...successor(), [key]: randomUUID() }, "oidc_new")).rejects.toMatchObject({
+        code: "enrollment_binding_changed",
+      });
+    },
+  );
+  it.each(["extended", "expired"])("denies an %s invitation during readback", async (kind) => {
+    await expire();
+    const expiresAt = new Date(Date.parse(p.expiresAt) + (kind === "extended" ? 1000 : -7200000)).toISOString();
+    await expect(restart.inspectEntry({ ...successor(), expiresAt }, "oidc_new")).rejects.toMatchObject({
+      code: "enrollment_invitation_changed",
+    });
+  });
+  it("denies readback after logout-all advances the provider epoch", async () => {
+    await expire();
+    await sql`UPDATE login_workforce_epochs SET epoch=epoch+1 WHERE issuer=${p.issuer} AND provider_subject=${p.providerSubject}`;
+    await expect(restart.inspectEntry(successor(), "oidc_new")).rejects.toMatchObject({ code: "enrollment_not_current" });
+  });
+  it.each(["completed", "cancelled"] as const)("denies readback of a %s enrollment", async (reason) => {
+    await store.retire(p.enrollmentId, reason);
+    await expire();
+    await expect(restart.inspectEntry(successor(), "oidc_new")).rejects.toMatchObject({ code: "enrollment_not_current" });
+  });
+  it("detects altered root custody even when the requested profile matches", async () => {
+    await expire();
+    await sql.begin(async (tx) => {
+      await tx.unsafe("ALTER TABLE login_reviewed_workforce_enrollments DISABLE TRIGGER immutable_reviewed_enrollment");
+      await tx`UPDATE login_reviewed_workforce_enrollments SET binding_hash=${"0".repeat(64)} WHERE enrollment_id=${p.enrollmentId}`;
+      await tx.unsafe("ALTER TABLE login_reviewed_workforce_enrollments ENABLE TRIGGER immutable_reviewed_enrollment");
+    });
+    await expect(restart.inspectEntry(successor(), "oidc_new")).rejects.toMatchObject({
+      code: "enrollment_binding_changed",
+    });
+  });
   it.each(["exact", "changed-person", "changed-session", "changed-hash"])(
     "legacy metadata recovery requires %s immutable ceremony and parent bindings",
     async (kind) => {

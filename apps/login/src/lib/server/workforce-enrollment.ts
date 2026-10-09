@@ -476,7 +476,14 @@ export async function inspectReviewedWorkforceEnrollmentEntry(command: { operati
       return { email: c.projection.email, state: "oidc_request_required" as const };
     }
     const c = await context(command.operationId, command.requestId);
-    return { email: c.projection.email, requestId: command.requestId, state: "ready_to_start" as const };
+    await pendingOutcome(c.projection);
+    const state = await new WorkforceEnrollmentRestart(workforceEnrollmentStore()).inspectEntry(
+      c.projection,
+      command.requestId,
+    );
+    return state === "oidc_request_required"
+      ? { email: c.projection.email, state }
+      : { email: c.projection.email, requestId: command.requestId, state };
   } catch {
     return unavailable();
   }
