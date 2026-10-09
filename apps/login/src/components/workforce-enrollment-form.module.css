@@ -74,6 +74,11 @@
   text-align: left;
   color: #0b2c44;
 }
+/* This non-interactive heading receives announcing focus after a state change.
+   Interactive fields and buttons retain their explicit visible focus rings. */
+.heading:focus {
+  outline: none;
+}
 .body {
   margin: 0 0 20px;
   font-size: 16px;
@@ -145,6 +150,17 @@
 }
 .helper {
   margin: 8px 0 20px;
+}
+.recovery .destination {
+  padding-block: 12px;
+  margin-bottom: 16px;
+}
+.recovery .status {
+  margin-block: 12px;
+}
+.recovery .helper {
+  margin-bottom: 12px;
+  text-align: center;
 }
 .button {
   display: flex;

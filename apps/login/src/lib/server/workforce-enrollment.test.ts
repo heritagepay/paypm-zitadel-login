@@ -4,8 +4,10 @@ import { UserState } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workforceAssertionHash } from "../workforce-assertion";
 import { enrollmentIdentityRequest } from "../workforce-enrollment-identity-client";
 import { WorkforceEnrollmentRestart } from "../workforce-enrollment-restart";
+import { readEnrollmentReturn, writeEnrollmentReturn } from "../workforce-enrollment-return";
 import { workforceEnrollmentStore } from "../workforce-enrollment-store";
 import { workforceProvider } from "../workforce-provider";
 import { deleteWorkforceState, readWorkforceState, writeWorkforceState } from "../workforce-state";
@@ -24,6 +26,8 @@ import {
   inspectReviewedWorkforceEnrollmentEntry,
   replaceReviewedWorkforceProfileEmail,
   resendReviewedWorkforceEnrollment,
+  resumeReviewedWorkforceEnrollmentRequest,
+  returnToReviewedWorkforceApplication,
   reviewedWorkforceEmailVerificationTemplate,
   startReviewedWorkforceEnrollment,
   verifyReviewedWorkforceEnrollment,
@@ -46,6 +50,12 @@ vi.mock("../workforce-enrollment-identity-client", async (original) => ({
 vi.mock("../workforce-enrollment-store", () => ({ workforceEnrollmentStore: vi.fn() }));
 vi.mock("../workforce-profile-email-provider", () => ({ deliverWorkforceProfileEmail: vi.fn() }));
 vi.mock("../workforce-provider", () => ({ workforceProvider: vi.fn() }));
+vi.mock("../workforce-enrollment-return", async (original) => ({
+  ...(await original<typeof import("../workforce-enrollment-return")>()),
+  readEnrollmentReturn: vi.fn(),
+  writeEnrollmentReturn: vi.fn(),
+  clearEnrollmentReturn: vi.fn(),
+}));
 vi.mock("../workforce-revocations", () => ({ flushWorkforceRevocations: vi.fn() }));
 vi.mock("../workforce-state", () => ({
   readWorkforceState: vi.fn(),
@@ -59,6 +69,13 @@ const start = () => ({ operationId: p.enrollmentId, requestId: "oidc_owned", ope
 const verify = () => ({ operationId: p.enrollmentId, challengeId: row.id, operationKey: randomUUID(), code: "12345678" });
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.spyOn(WorkforceEnrollmentRestart.prototype, "inspectEntry").mockResolvedValue("ready_to_start");
+  vi.spyOn(WorkforceEnrollmentRestart.prototype, "navigationContext").mockResolvedValue({
+    projectionHash: "a".repeat(64),
+    custodyHash: "b".repeat(64),
+    previousRequestId: "oidc_old",
+  });
+  vi.mocked(readEnrollmentReturn).mockResolvedValue({ present: false, state: undefined });
   for (const [k, v] of Object.entries({
     NEXT_PUBLIC_BASE_PATH: "/ui/v2/login",
     PAYPM_WORKFORCE_ISSUER: "https://auth.paypm.test",
@@ -388,6 +405,50 @@ describe("readonly original enrollment entry", () => {
     expect(store.begin).not.toHaveBeenCalled();
     expect(store.reserveChallenge).not.toHaveBeenCalled();
   });
+  it("shows fresh-request guidance for the expired original request without creating a flow", async () => {
+    vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+    vi.mocked(WorkforceEnrollmentRestart.prototype.inspectEntry).mockResolvedValue("oidc_request_required");
+    expect(await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" })).toEqual({
+      email: p.email,
+      state: "oidc_request_required",
+    });
+    expect(WorkforceEnrollmentRestart.prototype.inspectEntry).toHaveBeenCalledWith(p, "oidc_owned");
+    expect(writeWorkforceState).not.toHaveBeenCalled();
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(store.reserveChallenge).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+  });
+  it.each(["enrollment_not_current", "enrollment_binding_changed", "enrollment_invitation_changed"])(
+    "does not offer a new start when read-only custody rejects %s",
+    async (reason) => {
+      vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+      vi.mocked(WorkforceEnrollmentRestart.prototype.inspectEntry).mockRejectedValue(new WorkforceStoreError(reason));
+      expect(
+        await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" }),
+      ).toHaveProperty("error");
+      expect(store.begin).not.toHaveBeenCalled();
+      expect(workforceProvider).not.toHaveBeenCalled();
+    },
+  );
+  it("does not offer a fresh enrollment after Identity reports a completed outcome", async () => {
+    vi.mocked(readWorkforceState).mockResolvedValue(undefined);
+    vi.mocked(enrollmentIdentityRequest).mockImplementation(async (op) =>
+      op === "current"
+        ? p
+        : ({
+            enrollmentId: p.enrollmentId,
+            personId: p.personId,
+            providerSubject: p.providerSubject,
+            state: "completed",
+          } as any),
+    );
+    expect(
+      await inspectReviewedWorkforceEnrollmentEntry({ operationId: p.enrollmentId, requestId: "oidc_owned" }),
+    ).toHaveProperty("error");
+    expect(WorkforceEnrollmentRestart.prototype.inspectEntry).not.toHaveBeenCalled();
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+  });
   it("rejects forged client or changed signed original query", async () => {
     vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "other" } } as any);
     expect(
@@ -646,5 +707,96 @@ describe("uncertain canonical completion cannot restart credentials", () => {
     expect(store.begin).not.toHaveBeenCalled();
     expect(writeWorkforceState).not.toHaveBeenCalled();
     expect(deliverWorkforceProfileEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("same invitation fresh native return", () => {
+  const target = { clientId: "staff-client", application: "identity", url: "https://identity.paypm.test/" };
+  beforeEach(() => vi.stubEnv("PAYPM_WORKFORCE_ENROLLMENT_RETURN_TARGETS_JSON", JSON.stringify([target])));
+  it("writes only navigation context on explicit return, no code/session/admission/link", async () => {
+    expect(await returnToReviewedWorkforceApplication({ operationId: p.enrollmentId })).toEqual({ redirect: target.url });
+    expect(writeEnrollmentReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enrollmentId: p.enrollmentId,
+        clientId: p.clientId,
+        issuer: p.issuer,
+        projectionHash: "a".repeat(64),
+        custodyHash: "b".repeat(64),
+        targetHash: workforceAssertionHash(target),
+      }),
+    );
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+    expect(store.retire).not.toHaveBeenCalled();
+    expect(enrollmentIdentityRequest).not.toHaveBeenCalledWith("complete", expect.anything(), expect.anything());
+    expect(getAuthRequest).not.toHaveBeenCalled();
+  });
+  it.each(["completed", "retired"])("denies navigation after %s outcome", async (state) => {
+    vi.mocked(enrollmentIdentityRequest).mockImplementation(async (op) =>
+      op === "current"
+        ? p
+        : ({ enrollmentId: p.enrollmentId, personId: p.personId, providerSubject: p.providerSubject, state } as any),
+    );
+    expect(await returnToReviewedWorkforceApplication({ operationId: p.enrollmentId })).toHaveProperty("error");
+    expect(writeEnrollmentReturn).not.toHaveBeenCalled();
+  });
+  it("denies navigation on custody failure or missing registry before storing cookie", async () => {
+    vi.mocked(WorkforceEnrollmentRestart.prototype.navigationContext).mockRejectedValue(
+      new WorkforceStoreError("enrollment_not_current"),
+    );
+    expect(await returnToReviewedWorkforceApplication({ operationId: p.enrollmentId })).toHaveProperty("error");
+    vi.stubEnv("PAYPM_WORKFORCE_ENROLLMENT_RETURN_TARGETS_JSON", "");
+    expect(await returnToReviewedWorkforceApplication({ operationId: p.enrollmentId })).toHaveProperty("error");
+    expect(writeEnrollmentReturn).not.toHaveBeenCalled();
+  });
+  function hint() {
+    return {
+      enrollmentId: p.enrollmentId,
+      clientId: p.clientId,
+      issuer: p.issuer,
+      projectionHash: "a".repeat(64),
+      custodyHash: "b".repeat(64),
+      targetHash: workforceAssertionHash(target),
+      previousRequestId: "oidc_old",
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + 60000,
+    };
+  }
+  it("resolves fresh actual client request to same invitation; repeated GET sends nothing", async () => {
+    vi.mocked(readEnrollmentReturn).mockResolvedValue({ present: true, state: hint() });
+    const expected = {
+      redirect: `https://auth.paypm.test/ui/v2/login/workforce-enrollment?operationId=${p.enrollmentId}&requestId=oidc_fresh`,
+    };
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toEqual(expected);
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toEqual(expected);
+    expect(getAuthRequest).toHaveBeenCalledWith(expect.objectContaining({ authRequestId: "fresh" }));
+    expect(store.begin).not.toHaveBeenCalled();
+    expect(workforceProvider).not.toHaveBeenCalled();
+    expect(writeWorkforceState).not.toHaveBeenCalled();
+  });
+  it.each(["projectionHash", "custodyHash", "targetHash", "clientId", "issuer"])(
+    "rejects changed %s without callback or issuance",
+    async (field) => {
+      vi.mocked(readEnrollmentReturn).mockResolvedValue({ present: true, state: { ...hint(), [field]: "changed" } });
+      expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toHaveProperty("error");
+      expect(store.begin).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects old request, wrong actual client and changed epoch/attempt", async () => {
+    vi.mocked(readEnrollmentReturn).mockResolvedValue({ present: true, state: hint() });
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_old" })).toHaveProperty("error");
+    vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: "other" } } as any);
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toHaveProperty("error");
+    vi.mocked(getAuthRequest).mockResolvedValue({ authRequest: { clientId: p.clientId } } as any);
+    vi.mocked(WorkforceEnrollmentRestart.prototype.navigationContext).mockRejectedValue(
+      new WorkforceStoreError("enrollment_not_current"),
+    );
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toHaveProperty("error");
+  });
+  it("missing hint leaves incumbent entry alone; invalid hint fails closed", async () => {
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toBeUndefined();
+    expect(getAuthRequest).not.toHaveBeenCalled();
+    vi.mocked(readEnrollmentReturn).mockResolvedValue({ present: true, state: undefined });
+    expect(await resumeReviewedWorkforceEnrollmentRequest({ requestId: "oidc_fresh" })).toHaveProperty("error");
   });
 });

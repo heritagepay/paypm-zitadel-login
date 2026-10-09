@@ -28,6 +28,7 @@ import { SecuritySettings } from "@zitadel/proto/zitadel/settings/v2/security_se
 import escapeHtml from "escape-html";
 import { NextRequest, NextResponse } from "next/server";
 import { buildCSP } from "../csp";
+import { resumeReviewedWorkforceEnrollmentRequest } from "./workforce-enrollment";
 
 const logger = createLogger("flow-initiation");
 
@@ -95,6 +96,18 @@ export async function handleOIDCFlowInitiation(params: FlowInitiationParams): Pr
     if (shouldUILocalesOverrideCookie() || !existingLanguage) {
       await setLanguageCookie(locale);
     }
+  }
+
+  const enrollmentReturn = await resumeReviewedWorkforceEnrollmentRequest({ requestId });
+  if (enrollmentReturn) {
+    const response =
+      "redirect" in enrollmentReturn
+        ? NextResponse.redirect(enrollmentReturn.redirect)
+        : NextResponse.json({ error: "Reviewed workforce enrollment unavailable" }, { status: 400 });
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Frame-Options", "deny");
+    return response;
   }
 
   let organization = "";

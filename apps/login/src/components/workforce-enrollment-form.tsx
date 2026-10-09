@@ -6,6 +6,7 @@ import {
   inspectReviewedWorkforceEnrollmentEntry,
   replaceReviewedWorkforceProfileEmail,
   resendReviewedWorkforceEnrollment,
+  returnToReviewedWorkforceApplication,
   startReviewedWorkforceEnrollment,
   verifyReviewedWorkforceEnrollment,
   verifyReviewedWorkforceProfileEmail,
@@ -18,6 +19,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import styles from "./workforce-enrollment-form.module.css";
 
@@ -38,6 +40,7 @@ type View = {
   challengeId?: string;
   expiresAt?: string;
   resendAt?: string;
+  returnApplication?: "identity" | "operations" | "super-admin";
   profileDelivery?: {
     state: "pending" | "accepted" | "unknown";
     attemptId: string;
@@ -45,7 +48,7 @@ type View = {
     codeExpiresAt: string;
   };
 };
-type Action = "start" | "profile" | "verify" | "resend" | "complete" | "cancel" | "inspect" | "replaceProfile";
+type Action = "start" | "profile" | "verify" | "resend" | "complete" | "cancel" | "inspect" | "replaceProfile" | "return";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const request = /^oidc_[A-Za-z0-9_-]{1,480}$/;
 const phases: Phase[] = [
@@ -66,6 +69,9 @@ function projection(value: unknown, previous?: View): View | undefined {
   const fields = value as Record<string, unknown>;
   if (!phases.includes(fields.state as Phase)) return undefined;
   const state = fields.state as Phase;
+  const returnApplication = fields.returnApplication ?? previous?.returnApplication;
+  if (returnApplication !== undefined && !["identity", "operations", "super-admin"].includes(returnApplication as string))
+    return undefined;
   const email = fields.email ?? previous?.email;
   const requestId = fields.requestId ?? previous?.requestId;
   if (state !== "cancelled" && (typeof email !== "string" || !email.length || email.length > 320)) return undefined;
@@ -79,6 +85,7 @@ function projection(value: unknown, previous?: View): View | undefined {
     state,
     email: typeof email === "string" ? email : undefined,
     requestId: typeof requestId === "string" ? requestId : undefined,
+    returnApplication: returnApplication as View["returnApplication"],
   };
   if (state === "profile_email_verification_pending") {
     if (fields.expiresAt !== undefined) {
@@ -127,6 +134,7 @@ function projection(value: unknown, previous?: View): View | undefined {
 
 export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: string; entry: Entry }) {
   const t = useTranslations("workforceEnrollment");
+  const router = useRouter();
   const [view, setView] = useState<View | undefined>(() => projection(entry));
   const [code, setCode] = useState("");
   const [unconfirmed, setUnconfirmed] = useState(!projection(entry));
@@ -144,9 +152,11 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   const state = view?.state;
   const profile = state === "profile_email_verification_pending";
   const otp = state === "otp_pending";
+  const linking = state === "identity_link_pending";
   const completed = state === "enrollment_completed_access_pending";
   const terminal = completed || state === "cancelled";
-  const expired = (otp || profile) && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
+  const expired = (otp || profile || linking) && !!view?.expiresAt && now >= Date.parse(view.expiresAt);
+  const recovery = (expired || state === "oidc_request_required") && !!view?.returnApplication;
   const remaining = view?.resendAt ? Math.max(0, Math.ceil((Date.parse(view.resendAt) - now) / 1000)) : 0;
   const currentCode = formattedCode(code);
   const codeValid = profile ? /^[A-Z0-9]{6}$/.test(currentCode) : /^\d{8}$/.test(currentCode);
@@ -154,6 +164,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     validOperation &&
     !!view?.requestId &&
     !terminal &&
+    !expired &&
     state !== "ready_to_start" &&
     state !== "oidc_request_required" &&
     busy !== "cancel" &&
@@ -186,15 +197,15 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
   }, []);
 
   useEffect(() => {
-    if (!otp && !profile) return;
+    if (!otp && !profile && !linking) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [otp, profile]);
+  }, [otp, profile, linking]);
 
   useEffect(() => {
-    if (profile || otp) input.current?.focus();
+    if ((profile || otp) && !recovery) input.current?.focus();
     else heading.current?.focus();
-  }, [state, view?.challengeId, profile, otp]);
+  }, [state, view?.challengeId, profile, otp, recovery]);
 
   function intent(key: string) {
     let value = keys.current.get(key);
@@ -213,7 +224,21 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     try {
       const result = await command();
       if (!mounted.current || epoch.current !== current) return;
-      const next = projection(result, view);
+      if (
+        action === "return" &&
+        result &&
+        typeof result === "object" &&
+        "redirect" in result &&
+        typeof result.redirect === "string"
+      ) {
+        const url = new URL(result.redirect);
+        if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
+          throw new Error("Invalid return");
+        router.push(url.href);
+        return;
+      }
+      // A status readback owns current return availability; it must withdraw a removed registration.
+      const next = projection(result, action === "inspect" && view ? { ...view, returnApplication: undefined } : view);
       if (!next) {
         if (action === "replaceProfile" && profile) setProfileSendUnknown(true);
         else setUnconfirmed(true);
@@ -291,14 +316,17 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     void run("cancel", () => cancelReviewedWorkforceEnrollment({ operationId, operationKey: intent("cancel") }));
   }
 
-  const proofEmail = state === "profile_email_verified" || otp || state === "identity_link_pending" || completed;
-  const proofSession = state === "identity_link_pending" || completed;
+  const proofEmail =
+    !recovery && (state === "profile_email_verified" || otp || state === "identity_link_pending" || completed);
+  const proofSession = (linking && !expired) || completed;
   const title = completed
     ? "completeTitle"
     : state === "cancelled"
       ? "cancelledTitle"
-      : state === "identity_link_pending"
-        ? "linkTitle"
+      : linking
+        ? expired
+          ? "requestTitle"
+          : "linkTitle"
         : otp
           ? "sessionTitle"
           : state === "profile_email_verified"
@@ -314,8 +342,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
     ? "completeBody"
     : state === "cancelled"
       ? "cancelledBody"
-      : state === "identity_link_pending"
-        ? "linkBody"
+      : linking
+        ? expired
+          ? "requestBody"
+          : "linkBody"
         : otp
           ? "sessionBody"
           : state === "profile_email_verified"
@@ -350,12 +380,14 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
           {completed ? t("accessPending") : t("stepAccess")}
         </li>
       </ol>
-      <main className={styles.panel} aria-busy={!!busy}>
-        <div key={state} className={styles.transition}>
+      <main className={`${styles.panel} ${recovery ? styles.recovery : ""}`} aria-busy={!!busy}>
+        <div key={`${state}:${recovery}`} className={styles.transition}>
           <h1 ref={heading} tabIndex={-1} className={styles.heading}>
-            {t(title)}
+            {t(recovery ? "returnTitle" : title)}
           </h1>
-          <p className={styles.body}>{t(body)}</p>
+          <p className={styles.body}>
+            {recovery ? t("returnBody", { application: t(`applications.${view!.returnApplication}`) }) : t(body)}
+          </p>
         </div>
         {view?.email && state !== "cancelled" && (
           <div className={styles.destination}>
@@ -384,10 +416,10 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
         )}
         {expired && (
           <p className={styles.status} role="status">
-            {t(profile ? "profileRequestExpired" : "expired")}
+            {t(recovery ? "returnExpired" : profile ? "profileRequestExpired" : "expired")}
           </p>
         )}
-        {(profile || otp) && (
+        {(profile || otp) && !recovery && (
           <form onSubmit={submit}>
             <label htmlFor="workforce-enrollment-code" className={styles.label}>
               {t(profile ? "profileCodeLabel" : "sessionCodeLabel")}
@@ -450,7 +482,7 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             </button>
           </form>
         )}
-        {otp && (
+        {otp && !recovery && (
           <button
             type="button"
             className={`${styles.button} ${styles.resend}`}
@@ -486,12 +518,18 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             <ArrowRightIcon className={styles.icon} aria-hidden="true" />
           </button>
         )}
-        {state === "identity_link_pending" && (
+        {linking && !recovery && (
           <button
             type="button"
             className={`${styles.button} ${styles.primary}`}
-            disabled={!!busy || unconfirmed}
+            disabled={!!busy || unconfirmed || expired}
             onClick={() => {
+              // Background tabs may throttle the interval: check the wall clock at dispatch too.
+              const clickedAt = Date.now();
+              if (!view?.expiresAt || clickedAt >= Date.parse(view.expiresAt)) {
+                setNow(clickedAt);
+                return;
+              }
               if (view?.challengeId)
                 void run("complete", () =>
                   completeReviewedWorkforceEnrollment({
@@ -505,11 +543,30 @@ export function WorkforceEnrollmentForm({ operationId, entry }: { operationId: s
             {t(busy === "complete" ? "completing" : "complete")}
           </button>
         )}
-        {(unconfirmed || profileSendUnknown || expired || state === "identity_link_pending") && validOperation && (
-          <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={!!busy} onClick={check}>
-            {t(busy === "inspect" ? "checking" : "check")}
-          </button>
+        {recovery && validOperation && (
+          <>
+            <button
+              type="button"
+              className={`${styles.button} ${styles.primary}`}
+              disabled={!!busy}
+              onClick={() => void run("return", () => returnToReviewedWorkforceApplication({ operationId }))}
+            >
+              {busy === "return"
+                ? t("returning")
+                : t("return", { application: t(`shortApplications.${view!.returnApplication}`) })}
+              <ArrowRightIcon className={styles.icon} aria-hidden="true" />
+            </button>
+            <p className={styles.helper} role={busy === "return" ? "status" : undefined}>
+              {t(busy === "return" ? "returning" : "returnHint")}
+            </p>
+          </>
         )}
+        {(unconfirmed || profileSendUnknown || expired || recovery || state === "identity_link_pending") &&
+          validOperation && (
+            <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={!!busy} onClick={check}>
+              {t(busy === "inspect" ? "checking" : "check")}
+            </button>
+          )}
         {canCancel && (
           <button type="button" className={`${styles.button} ${styles.secondary}`} onClick={cancel}>
             {t("cancel")}

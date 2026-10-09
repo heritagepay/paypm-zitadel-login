@@ -508,6 +508,14 @@
     }
   },
   "workforceEnrollment": {
+    "returnTitle": "Let’s resume your enrollment.",
+    "returnBody": "Your invitation is preserved. Return to {application} to open a new sign-in request.",
+    "returnExpired": "Your verification has expired. A new code is required.",
+    "return": "Return to {application}",
+    "returning": "Opening the application…",
+    "returnHint": "Choose “Sign in”. You will return to this invitation.",
+    "applications": { "identity": "Identity Administration", "operations": "Operations", "super-admin": "Super Admin" },
+    "shortApplications": { "identity": "Identity", "operations": "Operations", "super-admin": "Super Admin" },
     "team": "Team access",
     "progressLabel": "Enrollment progress",
     "stepEmail": "Email",

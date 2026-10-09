@@ -14,6 +14,12 @@ import {
   type EnrollmentProjection,
 } from "../workforce-enrollment-identity-client";
 import { WorkforceEnrollmentRestart } from "../workforce-enrollment-restart";
+import {
+  clearEnrollmentReturn,
+  enrollmentReturnTarget,
+  readEnrollmentReturn,
+  writeEnrollmentReturn,
+} from "../workforce-enrollment-return";
 import { workforceEnrollmentStore, type EnrollmentOriginal } from "../workforce-enrollment-store";
 import { workforcePolicy } from "../workforce-policy";
 import { deliverWorkforceProfileEmail } from "../workforce-profile-email-provider";
@@ -235,13 +241,16 @@ export async function startReviewedWorkforceEnrollment(command: {
     const existing = await readWorkforceState();
     if (existing?.purpose === "reviewed-workforce-enrollment" && existing.enrollmentId === command.operationId) {
       if (existing.requestId !== command.requestId) throw new Error("Original browser request changed");
-      if (existing.challengeId)
+      if (existing.challengeId) {
+        await clearEnrollmentReturn(command.operationId);
         return await inspectReviewedWorkforceEnrollmentEntry({
           operationId: command.operationId,
           requestId: command.requestId,
         });
+      }
       await owned(command.operationId);
     } else await flow(original);
+    await clearEnrollmentReturn(command.operationId);
     if (!c.projection.emailVerified) return await issueProfile(command.operationId, command.operationKey);
     const settings = await getLoginSettings({ serviceConfig: c.serviceConfig, organization: c.policy.organizationId }),
       methods = await listAuthenticationMethodTypes({
@@ -385,6 +394,7 @@ export async function cancelReviewedWorkforceEnrollment(command: { operationId: 
     const c = await owned(command.operationId);
     await c.store.retire(command.operationId, "cancelled");
     await deleteWorkforceState();
+    await clearEnrollmentReturn(command.operationId);
     await flushWorkforceRevocations(c.store.base, await workforceProvider(c.serviceConfig, c.policy.organizationId));
     return { state: "cancelled" as const };
   } catch {
@@ -422,7 +432,69 @@ export async function completeReviewedWorkforceEnrollment(command: {
       return unavailable();
     await owned(command.operationId, true);
     await c.store.retire(command.operationId, "completed");
+    await clearEnrollmentReturn(command.operationId);
     return { state: "enrollment_completed_access_pending" as const };
+  } catch {
+    return unavailable();
+  }
+}
+
+/** Explicit navigation only: current invitation and durable custody are rechecked before storing a routing hint. */
+export async function returnToReviewedWorkforceApplication(command: { operationId: string }) {
+  if (!enrollmentUuid(command.operationId)) return unavailable();
+  try {
+    const c = await prepared(command.operationId);
+    await pendingOutcome(c.projection);
+    const target = enrollmentReturnTarget(c.projection.clientId);
+    if (!target || process.env.NEXT_PUBLIC_BASE_PATH !== "/ui/v2/login") return unavailable();
+    const binding = await new WorkforceEnrollmentRestart(workforceEnrollmentStore()).navigationContext(c.projection);
+    const now = Date.now();
+    await writeEnrollmentReturn({
+      enrollmentId: c.projection.enrollmentId,
+      clientId: c.projection.clientId,
+      issuer: c.policy.issuer,
+      ...binding,
+      targetHash: workforceAssertionHash(target),
+      issuedAt: now,
+      expiresAt: Math.min(now + 300000, Date.parse(c.projection.expiresAt)),
+    });
+    return { redirect: target.url };
+  } catch {
+    return unavailable();
+  }
+}
+
+/** Native Login entry calls this before any account-selection or callback shortcut. No provider/session mutation. */
+export async function resumeReviewedWorkforceEnrollmentRequest(command: { requestId: string }) {
+  const pending = await readEnrollmentReturn();
+  if (!pending.present) return undefined;
+  try {
+    if (!pending.state) return unavailable();
+    const state = pending.state,
+      c = await context(state.enrollmentId, command.requestId);
+    await pendingOutcome(c.projection);
+    const target = enrollmentReturnTarget(c.projection.clientId);
+    if (
+      !target ||
+      process.env.NEXT_PUBLIC_BASE_PATH !== "/ui/v2/login" ||
+      state.issuer !== c.policy.issuer ||
+      state.clientId !== c.projection.clientId ||
+      state.targetHash !== workforceAssertionHash(target)
+    )
+      return unavailable();
+    const binding = await new WorkforceEnrollmentRestart(workforceEnrollmentStore()).navigationContext(c.projection);
+    if (
+      binding.projectionHash !== state.projectionHash ||
+      binding.custodyHash !== state.custodyHash ||
+      binding.previousRequestId !== state.previousRequestId ||
+      command.requestId === binding.previousRequestId
+    )
+      return unavailable();
+    const url = new URL("/ui/v2/login/workforce-enrollment", c.policy.issuer);
+    url.searchParams.set("operationId", state.enrollmentId);
+    url.searchParams.set("requestId", command.requestId);
+    // Keep the hint for duplicate GETs; the explicit enrollment start clears it after fresh issuance.
+    return { redirect: url.href };
   } catch {
     return unavailable();
   }
@@ -436,7 +508,12 @@ export async function inspectReviewedWorkforceEnrollmentEntry(command: { operati
     if (existing?.purpose === "reviewed-workforce-enrollment" && existing.enrollmentId === command.operationId) {
       const c = await owned(command.operationId, true);
       if (command.requestId !== undefined && command.requestId !== c.flow.requestId) return unavailable();
-      const common = { email: c.projection.email, requestId: c.flow.requestId };
+      const target = enrollmentReturnTarget(c.projection.clientId);
+      const common = {
+        email: c.projection.email,
+        requestId: c.flow.requestId,
+        ...(target ? { returnApplication: target.application } : {}),
+      };
       if (c.original.retirement === "completed") return { ...common, state: "enrollment_completed_access_pending" as const };
       if (!c.flow.challengeId)
         return {
@@ -473,10 +550,23 @@ export async function inspectReviewedWorkforceEnrollmentEntry(command: { operati
     }
     if (command.requestId === undefined) {
       const c = await prepared(command.operationId);
-      return { email: c.projection.email, state: "oidc_request_required" as const };
+      await pendingOutcome(c.projection);
+      const target = enrollmentReturnTarget(c.projection.clientId);
+      return {
+        email: c.projection.email,
+        state: "oidc_request_required" as const,
+        ...(target ? { returnApplication: target.application } : {}),
+      };
     }
     const c = await context(command.operationId, command.requestId);
-    return { email: c.projection.email, requestId: command.requestId, state: "ready_to_start" as const };
+    await pendingOutcome(c.projection);
+    const state = await new WorkforceEnrollmentRestart(workforceEnrollmentStore()).inspectEntry(
+      c.projection,
+      command.requestId,
+    );
+    const target = enrollmentReturnTarget(c.projection.clientId);
+    const common = { email: c.projection.email, ...(target ? { returnApplication: target.application } : {}) };
+    return state === "oidc_request_required" ? { ...common, state } : { ...common, requestId: command.requestId, state };
   } catch {
     return unavailable();
   }
