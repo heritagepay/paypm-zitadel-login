@@ -93,13 +93,14 @@ export async function workforceSelfRegistrationDenied(
     .includes(authRequest.clientId);
 }
 
-function serviceUrl(value: string | undefined): URL | undefined {
+function serviceUrl(value: string | undefined, privateIdentityBase = false): URL | undefined {
   if (!value) return undefined;
   try {
     const url = new URL(value);
     if (url.username || url.password || url.search || url.hash) return undefined;
     if (
       url.protocol !== "https:" &&
+      !(privateIdentityBase && value === "http://heritagepay-identity-api.identity.svc.cluster.local:3000/api") &&
       !(
         process.env.NODE_ENV !== "production" &&
         url.protocol === "http:" &&
@@ -115,7 +116,7 @@ function serviceUrl(value: string | undefined): URL | undefined {
 
 export const identityWorkforceEligibility: WorkforceEligibilityAdapter = {
   async resolve(input) {
-    const base = serviceUrl(process.env.PAYPM_WORKFORCE_IDENTITY_URL);
+    const base = serviceUrl(process.env.PAYPM_WORKFORCE_IDENTITY_URL, true);
     const tokenUrl = serviceUrl(process.env.PAYPM_WORKFORCE_IDENTITY_TOKEN_URL);
     const clientId = process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_ID;
     const secret = process.env.PAYPM_WORKFORCE_IDENTITY_CLIENT_SECRET;
