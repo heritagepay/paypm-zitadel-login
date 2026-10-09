@@ -74,7 +74,9 @@ function projection(value: unknown, previous?: View): View | undefined {
     return undefined;
   const email = fields.email ?? previous?.email;
   const requestId = fields.requestId ?? previous?.requestId;
-  if (state !== "cancelled" && (typeof email !== "string" || !email.length || email.length > 320)) return undefined;
+  // A historical completion exposes only state and original request binding.
+  if (state !== "cancelled" && state !== "enrollment_completed_access_pending" &&
+      (typeof email !== "string" || !email.length || email.length > 320)) return undefined;
   if (
     state !== "oidc_request_required" &&
     state !== "cancelled" &&

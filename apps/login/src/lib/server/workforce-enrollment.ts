@@ -504,6 +504,24 @@ export async function resumeReviewedWorkforceEnrollmentRequest(command: { reques
 export async function inspectReviewedWorkforceEnrollmentEntry(command: { operationId: string; requestId?: string }) {
   if (!enrollmentUuid(command.operationId)) return unavailable();
   try {
+    // Historical status is not a fresh enrollment or admission. The original
+    // opaque request must match durable custody; no email/session/grant is returned.
+    if (validOriginalRequestId(command.requestId)) {
+      const store = workforceEnrollmentStore();
+      const original = await store.custody(command.operationId);
+      const policy = workforcePolicy();
+      if (original.request_id !== command.requestId || !policy ||
+          original.issuer !== policy.issuer || !policy.clientIds.includes(original.client_id))
+        return unavailable();
+      const result = (await enrollmentIdentityRequest("outcome", command.operationId)) as EnrollmentOutcome;
+      if (result.enrollmentId !== original.enrollment_id ||
+          result.personId !== original.binding.personId ||
+          result.providerSubject !== original.provider_subject)
+        return unavailable();
+      if (result.state === "completed")
+        return { state: "enrollment_completed_access_pending" as const, requestId: original.request_id };
+      if (result.state !== "pending" || original.retirement) return unavailable();
+    }
     const existing = await readWorkforceState();
     if (existing?.purpose === "reviewed-workforce-enrollment" && existing.enrollmentId === command.operationId) {
       const c = await owned(command.operationId, true);
