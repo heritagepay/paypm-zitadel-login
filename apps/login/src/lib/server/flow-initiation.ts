@@ -4,11 +4,11 @@ import { getLanguageCookie, setLanguageCookie } from "@/lib/cookies";
 import { shouldUILocalesOverrideCookie } from "@/lib/i18n";
 import { idpTypeToSlug } from "@/lib/idp";
 import { createLogger } from "@/lib/logger";
+import { loginWithOIDCAndSession } from "@/lib/oidc";
 import { sendLoginname, SendLoginnameCommand } from "@/lib/server/loginname";
 import { constructUrl } from "@/lib/service-url";
 import { findValidSession } from "@/lib/session";
 import {
-  createCallback,
   createResponse,
   getActiveIdentityProviders,
   getAuthRequest,
@@ -20,7 +20,6 @@ import {
 } from "@/lib/zitadel";
 import { create } from "@zitadel/client";
 import { Prompt } from "@zitadel/proto/zitadel/oidc/v2/authorization_pb";
-import { CreateCallbackRequestSchema, SessionSchema } from "@zitadel/proto/zitadel/oidc/v2/oidc_service_pb";
 import { CreateResponseRequestSchema } from "@zitadel/proto/zitadel/saml/v2/saml_service_pb";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { IdentityProviderType } from "@zitadel/proto/zitadel/settings/v2/login_settings_pb";
@@ -71,7 +70,10 @@ const gotoAccounts = ({
     accountsUrl.searchParams.set("organization", organization);
   }
 
-  return NextResponse.redirect(accountsUrl);
+  const response = NextResponse.redirect(accountsUrl);
+  response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
 };
 
 export interface FlowInitiationParams {
@@ -80,6 +82,30 @@ export interface FlowInitiationParams {
   sessions: Session[];
   sessionCookies: any[];
   request: NextRequest;
+}
+
+/** All native shortcuts use the same live category/session admission as explicit completion. */
+async function admittedOIDCCallback(params: FlowInitiationParams, sessionId: string): Promise<NextResponse | undefined> {
+  try {
+    const result = await loginWithOIDCAndSession({
+      serviceConfig: params.serviceConfig,
+      authRequest: params.requestId.replace("oidc_", ""),
+      sessionId,
+      sessions: params.sessions,
+      sessionCookies: params.sessionCookies,
+    });
+    if (!("redirect" in result) || !result.redirect) return undefined;
+    const target = result.redirect.startsWith("/")
+      ? constructUrl(params.request, result.redirect)
+      : new URL(result.redirect);
+    const response = NextResponse.redirect(target);
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
+  } catch {
+    logger.error("Native OIDC category admission unavailable");
+    return undefined;
+  }
 }
 
 /**
@@ -291,6 +317,8 @@ export async function handleOIDCFlowInitiation(params: FlowInitiationParams): Pr
       const selectedSession = await findValidSession({ serviceConfig, sessions, authRequest, organization });
 
       const noSessionResponse = NextResponse.json({ error: "No active session found" }, { status: 400 });
+      noSessionResponse.headers.set("Cache-Control", "no-store");
+      noSessionResponse.headers.set("Referrer-Policy", "no-referrer");
       setCSPHeaders(noSessionResponse, serviceConfig, securitySettings);
 
       if (!selectedSession || !selectedSession.id) {
@@ -303,23 +331,8 @@ export async function handleOIDCFlowInitiation(params: FlowInitiationParams): Pr
         return noSessionResponse;
       }
 
-      const session = {
-        sessionId: cookie.id,
-        sessionToken: cookie.token,
-      };
-
-      const { callbackUrl } = await createCallback({
-        serviceConfig,
-        req: create(CreateCallbackRequestSchema, {
-          authRequestId: requestId.replace("oidc_", ""),
-          callbackKind: {
-            case: "session",
-            value: create(SessionSchema, session),
-          },
-        }),
-      });
-
-      const callbackResponse = NextResponse.redirect(callbackUrl);
+      const callbackResponse = await admittedOIDCCallback(params, cookie.id);
+      if (!callbackResponse) return noSessionResponse;
       setCSPHeaders(callbackResponse, serviceConfig, securitySettings);
       return callbackResponse;
     } else {
@@ -343,40 +356,9 @@ export async function handleOIDCFlowInitiation(params: FlowInitiationParams): Pr
         });
       }
 
-      const session = {
-        sessionId: cookie.id,
-        sessionToken: cookie.token,
-      };
-
-      try {
-        const { callbackUrl } = await createCallback({
-          serviceConfig,
-          req: create(CreateCallbackRequestSchema, {
-            authRequestId: requestId.replace("oidc_", ""),
-            callbackKind: {
-              case: "session",
-              value: create(SessionSchema, session),
-            },
-          }),
-        });
-        if (callbackUrl) {
-          return NextResponse.redirect(callbackUrl);
-        } else {
-          logger.info("could not create callback, redirect user to choose other account");
-          return gotoAccounts({
-            request,
-            organization,
-            requestId,
-          });
-        }
-      } catch (error) {
-        logger.error("Error creating callback:", { error });
-        return gotoAccounts({
-          request,
-          requestId,
-          organization,
-        });
-      }
+      const callbackResponse = await admittedOIDCCallback(params, cookie.id);
+      if (callbackResponse) return callbackResponse;
+      return gotoAccounts({ request, requestId, organization });
     }
   } else {
     const loginNameUrl = constructUrl(request, "/loginname");
