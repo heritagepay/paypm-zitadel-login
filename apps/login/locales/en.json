@@ -514,8 +514,16 @@
     "return": "Return to {application}",
     "returning": "Opening the application…",
     "returnHint": "Choose “Sign in”. You will return to this invitation.",
-    "applications": { "identity": "Identity Administration", "operations": "Operations", "super-admin": "Super Admin" },
-    "shortApplications": { "identity": "Identity", "operations": "Operations", "super-admin": "Super Admin" },
+    "applications": {
+      "identity": "Identity Administration",
+      "operations": "Operations",
+      "super-admin": "Super Admin"
+    },
+    "shortApplications": {
+      "identity": "Identity",
+      "operations": "Operations",
+      "super-admin": "Super Admin"
+    },
     "team": "Team access",
     "progressLabel": "Enrollment progress",
     "stepEmail": "Email",
@@ -574,5 +582,26 @@
     "starting": "Preparing…",
     "verifying": "Verifying…",
     "footer": "PayPM team access · By invitation only"
+  },
+  "identityAction": {
+    "title": "Confirm your request",
+    "description": "Use your passkey to confirm the request you just started. Identity will then check your permissions.",
+    "checking": "Checking this request…",
+    "verify": "Verify with passkey",
+    "verifying": "Verifying…",
+    "retry": "Try again",
+    "retryVerification": "Retry verification",
+    "cancel": "Cancel verification",
+    "return": "Return to Identity",
+    "unavailable": "Verification is unavailable. Try again or return to Identity to resume your request.",
+    "expired": "This request has expired. Return to Identity to start again.",
+    "expires": "This request expires in {minutes} min.",
+    "actions": {
+      "walletIntake": "Prepare this Wallet account linkage",
+      "walletReview": "Confirm the review of this Wallet linkage",
+      "staffInvitation": "Invite this person to the Identity team",
+      "staffApproval": "Confirm this Identity access decision",
+      "membership": "Add this person as a member of the company. This action grants no Merchant role."
+    }
   }
 }

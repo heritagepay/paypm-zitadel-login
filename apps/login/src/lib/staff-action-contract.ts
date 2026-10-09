@@ -2,14 +2,17 @@ import { exactObject, identityUuid } from "./identity-action-object";
 export const identityStaffActions = {
   invitation: "identity.staff.invitation.issue",
   approval: "identity.staff.access.approve",
+  membership: "identity.organization.membership.add",
 } as const;
 export type StaffActionCommand =
+  | { purpose: "commercial_membership"; operationKey: string; businessId: string; memberPersonId: string; role: "member" }
   | { purpose: "staff_invitation"; operationKey: string; input: { email: string; givenName: string; familyName: string } }
   | { purpose: "staff_access_approval"; operationKey: string; requestId: string; requestCommitment: string };
 export function staffActionCommand(v: unknown): v is StaffActionCommand {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const c = v as Record<string, any>;
   if (!identityUuid(c.operationKey)) return false;
+  if (c.purpose === "commercial_membership") return exactObject(c, ["purpose", "operationKey", "businessId", "memberPersonId", "role"]) && identityUuid(c.businessId) && identityUuid(c.memberPersonId) && c.role === "member";
   if (c.purpose === "staff_access_approval")
     return (
       exactObject(c, ["purpose", "operationKey", "requestId", "requestCommitment"]) &&
@@ -35,4 +38,4 @@ export function staffActionCommand(v: unknown): v is StaffActionCommand {
   );
 }
 export const staffCommandAction = (command: StaffActionCommand) =>
-  command.purpose === "staff_invitation" ? identityStaffActions.invitation : identityStaffActions.approval;
+  command.purpose === "commercial_membership" ? identityStaffActions.membership : command.purpose === "staff_invitation" ? identityStaffActions.invitation : identityStaffActions.approval;

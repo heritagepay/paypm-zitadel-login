@@ -478,8 +478,16 @@
     "return": "Revenir à {application}",
     "returning": "Ouverture de l’application…",
     "returnHint": "Choisissez « Se connecter ». Vous reviendrez à cette invitation.",
-    "applications": { "identity": "Identity Administration", "operations": "Operations", "super-admin": "Super Admin" },
-    "shortApplications": { "identity": "Identity", "operations": "Operations", "super-admin": "Super Admin" },
+    "applications": {
+      "identity": "Identity Administration",
+      "operations": "Operations",
+      "super-admin": "Super Admin"
+    },
+    "shortApplications": {
+      "identity": "Identity",
+      "operations": "Operations",
+      "super-admin": "Super Admin"
+    },
     "team": "Accès équipe",
     "progressLabel": "Progression de l’inscription",
     "stepEmail": "Email",
@@ -538,5 +546,26 @@
     "starting": "Préparation…",
     "verifying": "Vérification…",
     "footer": "Accès équipe PayPM · Sur invitation uniquement"
+  },
+  "identityAction": {
+    "title": "Confirmer votre demande",
+    "description": "Utilisez votre clé d’accès pour confirmer la demande que vous venez de lancer. Identity vérifiera ensuite vos droits.",
+    "checking": "Vérification de la demande…",
+    "verify": "Vérifier avec ma clé d’accès",
+    "verifying": "Vérification…",
+    "retry": "Réessayer",
+    "retryVerification": "Réessayer la vérification",
+    "cancel": "Annuler la vérification",
+    "return": "Retour à Identity",
+    "unavailable": "La vérification est indisponible. Réessayez ou revenez à Identity pour reprendre votre demande.",
+    "expired": "Cette demande a expiré. Revenez à Identity pour recommencer.",
+    "expires": "Cette demande expire dans {minutes} min.",
+    "actions": {
+      "walletIntake": "Préparer le rattachement de ce compte Wallet",
+      "walletReview": "Confirmer la revue de ce rattachement Wallet",
+      "staffInvitation": "Inviter cette personne dans l’équipe Identity",
+      "staffApproval": "Confirmer cette décision d’accès à Identity",
+      "membership": "Ajouter cette personne comme membre de l’entreprise. Aucun rôle Merchant n’est accordé par cette action."
+    }
   }
 }
