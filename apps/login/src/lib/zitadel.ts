@@ -227,6 +227,11 @@ export async function listIDPLinks({ serviceConfig, userId }: WithServiceConfig<
   return userService.listIDPLinks({ userId }, {});
 }
 
+export async function listPasskeys({ serviceConfig, userId }: WithServiceConfig<{ userId: string }>) {
+  const userService: Client<typeof UserService> = await createServiceForHost(UserService, serviceConfig);
+  return userService.listPasskeys({ userId }, { timeoutMs: 5000 });
+}
+
 export async function addOTPEmail({ serviceConfig, userId }: WithServiceConfig<{ userId: string }>) {
   const userService: Client<typeof UserService> = await createServiceForHost(UserService, serviceConfig);
 
