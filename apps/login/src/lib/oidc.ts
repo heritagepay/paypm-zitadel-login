@@ -4,6 +4,7 @@ import { isClassifiedError } from "@/lib/grpc/interceptors/error-classification"
 import { sendLoginname, SendLoginnameCommand } from "@/lib/server/loginname";
 import { createCallback, getAuthRequest, getLoginSettings, getUserByID, ServiceConfig } from "@/lib/zitadel";
 import { Code, create } from "@zitadel/client";
+import { Prompt } from "@zitadel/proto/zitadel/oidc/v2/authorization_pb";
 import { CreateCallbackRequestSchema, SessionSchema } from "@zitadel/proto/zitadel/oidc/v2/oidc_service_pb";
 import { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { providerTimestampMs, satisfiesAuthorizationFreshness, verifiedFactor } from "./authentication-policy";
@@ -90,6 +91,7 @@ export async function loginWithOIDCAndSession({
     console.log("Session is valid:", isValid);
 
     if (!isValid) {
+      if (request.prompt.includes(Prompt.NONE)) return { error: "Session not found or invalid" };
       if (!selectedSession.factors?.user) return { error: "Session not found or invalid" };
       // if the session is not valid anymore, we need to redirect the user to re-authenticate /
       // TODO: handle IDP intent direcly if available
