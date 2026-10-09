@@ -3,6 +3,7 @@ import { create, type Duration } from "@zitadel/client";
 import { RequestChallengesSchema, UserVerificationRequirement } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
 import type { Session } from "@zitadel/proto/zitadel/session/v2/session_pb";
 import { ChecksSchema } from "@zitadel/proto/zitadel/session/v2/session_service_pb";
+import { AuthFactorState } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import { headers } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import "server-only";
@@ -30,12 +31,17 @@ import { workforcePolicy } from "./workforce-policy";
 import { workforceProvider } from "./workforce-provider";
 import { flushWorkforceRevocations } from "./workforce-revocations";
 import { workforceStore } from "./workforce-store";
-import { createSessionFromChecksAndChallenges, getSession, setSession } from "./zitadel";
+import { createSessionFromChecksAndChallenges, getSession, listPasskeys, setSession } from "./zitadel";
 const deny = () => new Error("Identity action unavailable");
-const failure = () =>
+class PasskeyEnrollmentRequired extends Error {
+  readonly code = "passkey_enrollment_required";
+}
+const failure = (error?: unknown) =>
   Response.json(
-    { error: "Identity action unavailable" },
-    { status: 403, headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } },
+    error instanceof PasskeyEnrollmentRequired
+      ? { error: "Identity action unavailable", code: error.code }
+      : { error: "Identity action unavailable" },
+    { status: error instanceof PasskeyEnrollmentRequired ? 428 : 403, headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } },
   );
 const json = (v: unknown) =>
   Response.json(v, { headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } });
@@ -319,6 +325,13 @@ async function dispatch(row: IdentityActionRow) {
   const s = identityActionStore(),
     { p, serviceConfig } = await providerConfig();
   if (row.state === "reserved") {
+    // Missing enrollment is a known prerequisite, not an uncertain CreateSession
+    // outcome. Leave the original request resumable without dispatching a challenge.
+    if (!row.provider_started_at) {
+      const keys = await listPasskeys({ serviceConfig, userId: row.provider_subject });
+      if (!Array.isArray(keys.result)) throw deny();
+      if (!keys.result.some((key) => key.state === AuthFactorState.READY)) throw new PasskeyEnrollmentRequired();
+    }
     if (!(await s.claimCreation(row.id))) {
       // Unknown create outcome is never redispatched. Observe/retire only exact original metadata.
       if (row.provider_started_at && Date.now() - row.provider_started_at.getTime() >= 10000) {
@@ -456,7 +469,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[a-z0-9_]{1,80}$/.test(error.code) ? error.code : "unavailable";
     console.error(JSON.stringify({context: "identity-action-start", stage, code}));
-    return failure();
+    return failure(error);
   }
 }
 export async function readIdentityAction(request: Request, id: string) {
