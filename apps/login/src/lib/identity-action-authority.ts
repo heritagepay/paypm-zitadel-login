@@ -14,7 +14,8 @@ export async function readIdentityActionAuthority(
   expected: IdentityActionExpected,
   command: IdentityActionCommand,
   pair: IdentityActionPair,
-  previous?: { requestId: string; expected: IdentityActionExpected; proofId: string | null; stepSessionId: string | null },
+  previous?: { requestId: string; expected: IdentityActionExpected; proofId: string | null; stepSessionId: string | null;
+    predecessorRequestId?: string; successorRequestId?: string },
 ) {
   assertIdentityCommand(expected, command);
   if (!identityActionPair(pair) || pair.clientId !== expected.clientId) throw new Error("Identity action unavailable");
@@ -30,12 +31,14 @@ export async function readIdentityActionAuthority(
     },
   );
   if (
-    !exactObject(result, ["active", "expected", "command", "caseId", ...(previous ? ["previousRequestId"] : [])]) ||
+    !exactObject(result, ["active", "expected", "command", "caseId", ...(previous ? ["previousRequestId"] : []),
+      ...(previous?.successorRequestId ? ["predecessorRequestId", "successorRequestId"] : [])]) ||
     result.active !== true ||
     result.caseId !== command.operationKey ||
     !sameIdentityBinding(result.expected, expected) ||
     !sameIdentityBinding(result.command, command) ||
-    (previous && result.previousRequestId !== previous.requestId)
+    (previous && result.previousRequestId !== previous.requestId) ||
+    (previous?.successorRequestId && (result.predecessorRequestId !== previous.predecessorRequestId || result.successorRequestId !== previous.successorRequestId))
   )
     throw new Error("Identity action unavailable");
   return { expected, command, caseId: command.operationKey } satisfies IdentityActionBinding;
