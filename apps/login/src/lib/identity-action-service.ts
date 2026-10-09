@@ -133,7 +133,16 @@ async function admission(pair: IdentityActionPair) {
   return v;
 }
 async function currentBinding(pair: IdentityActionPair, binding: IdentityActionBinding) {
-  const a = await admission(pair);
+  if (!identityActionPair(pair)) throw deny();
+  // Persisted caller material also contains callback/capability custody. The
+  // admission and authority contracts accept only this exact credential pair.
+  const proof: IdentityActionPair = {
+    idToken: pair.idToken,
+    accessToken: pair.accessToken,
+    nonce: pair.nonce,
+    clientId: pair.clientId,
+  };
+  const a = await admission(proof);
   const fields = [
     "personId",
     "issuer",
@@ -146,7 +155,7 @@ async function currentBinding(pair: IdentityActionPair, binding: IdentityActionB
     "environment",
   ] as const;
   if (fields.some((k) => a[k] !== binding.expected[k])) throw deny();
-  const b = await readIdentityActionAuthority(binding.expected, binding.command, pair);
+  const b = await readIdentityActionAuthority(binding.expected, binding.command, proof);
   return { binding: b, requestId: a.requestId as string };
 }
 async function live(row: IdentityActionRow, terminal = false) {
