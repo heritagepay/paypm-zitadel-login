@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FlowInitiationParams, handleOIDCFlowInitiation } from "./flow-initiation";
+import { resumeReviewedWorkforceEnrollmentRequest } from "./workforce-enrollment";
+vi.mock("./workforce-enrollment", () => ({ resumeReviewedWorkforceEnrollmentRequest: vi.fn() }));
 
 vi.mock("@/lib/cookies", () => ({
   getLanguageCookie: vi.fn(),
@@ -177,5 +179,35 @@ describe("handleOIDCFlowInitiation — locale / cookie handling", () => {
 
       expect(mockSetLanguageCookie).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("enrollment return precedes legacy native shortcuts", () => {
+  beforeEach(() => vi.resetAllMocks());
+  test("returns the same invitation before old-session selection or callback", async () => {
+    const z = await import("@/lib/zitadel"),
+      sessions = await import("@/lib/session");
+    vi.mocked(z.getAuthRequest).mockResolvedValue({
+      authRequest: { id: "abc123", clientId: "staff-client", prompt: [], scope: [] },
+    } as any);
+    vi.mocked(resumeReviewedWorkforceEnrollmentRequest).mockResolvedValue({
+      redirect: "https://auth.paypm.test/ui/v2/login/workforce-enrollment?operationId=synthetic&requestId=oidc_abc123",
+    });
+    const response = await handleOIDCFlowInitiation(
+      makeBaseParams({ sessions: [{ id: "old" } as any], sessionCookies: [{ id: "old", token: "synthetic" }] }),
+    );
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("workforce-enrollment");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(sessions.findValidSession).not.toHaveBeenCalled();
+    expect(z.createCallback).not.toHaveBeenCalled();
+  });
+  test("invalid return fails closed before a legacy callback", async () => {
+    const z = await import("@/lib/zitadel");
+    vi.mocked(z.getAuthRequest).mockResolvedValue({ authRequest: { id: "abc123" } } as any);
+    vi.mocked(resumeReviewedWorkforceEnrollmentRequest).mockResolvedValue({ error: "unavailable" });
+    const response = await handleOIDCFlowInitiation(makeBaseParams());
+    expect(response.status).toBe(400);
+    expect(z.createCallback).not.toHaveBeenCalled();
   });
 });

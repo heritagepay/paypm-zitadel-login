@@ -358,4 +358,47 @@ const url = process.env.PAYPM_WORKFORCE_TEST_DATABASE_URL;
     await expect(store.profileAttempt(p.enrollmentId, randomUUID(), "A7K9Q2")).rejects.toThrow("attempts_exhausted");
     expect(await sql`SELECT * FROM login_reviewed_workforce_profile_attempts`).toHaveLength(5);
   });
+
+  it("binds return navigation to an expired attempt without changing any journal", async () => {
+    await oldChallenge(true, true);
+    await expire();
+    const before = await rowCounts();
+    const hint = await restart.navigationContext(successor());
+    expect(hint.previousRequestId).toBe("oidc_old");
+    expect(hint.projectionHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(hint.custodyHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(await restart.navigationContext(successor())).toEqual(hint);
+    expect(await rowCounts()).toEqual(before);
+  });
+  it("missing enrollment navigation creates neither epoch nor appointment", async () => {
+    const before = await rowCounts(),
+      fresh = { ...p, enrollmentId: randomUUID(), providerSubject: "701" };
+    const hint = await restart.navigationContext(fresh);
+    expect(hint.previousRequestId).toBeUndefined();
+    expect(await rowCounts()).toEqual(before);
+    await sql`INSERT INTO login_workforce_epochs(issuer,provider_subject,epoch) VALUES(${fresh.issuer},${fresh.providerSubject},1)`;
+    expect((await restart.navigationContext(fresh)).custodyHash).not.toBe(hint.custodyHash);
+  });
+  it("cannot start return navigation while an original attempt is still current", async () => {
+    await expect(restart.navigationContext(p)).rejects.toMatchObject({ code: "enrollment_attempt_still_current" });
+  });
+  it.each(["personId", "policyId", "issuer", "organizationId", "clientId", "providerSubject", "email"] as const)(
+    "return rejects changed canonical %s",
+    async (key) => {
+      await expire();
+      await expect(restart.navigationContext({ ...successor(), [key]: randomUUID() })).rejects.toMatchObject({
+        code: "enrollment_binding_changed",
+      });
+    },
+  );
+  it("return rejects revoked epoch and retired invitation", async () => {
+    await expire();
+    await sql`UPDATE login_workforce_epochs SET epoch=epoch+1 WHERE issuer=${p.issuer} AND provider_subject=${p.providerSubject}`;
+    await expect(restart.navigationContext(p)).rejects.toMatchObject({ code: "enrollment_not_current" });
+  });
+  it.each(["completed", "cancelled"] as const)("return rejects %s outcome", async (reason) => {
+    await store.retire(p.enrollmentId, reason);
+    await expire();
+    await expect(restart.navigationContext(p)).rejects.toMatchObject({ code: "enrollment_not_current" });
+  });
 });

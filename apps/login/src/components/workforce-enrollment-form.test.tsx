@@ -5,6 +5,7 @@ import {
   inspectReviewedWorkforceEnrollmentEntry,
   replaceReviewedWorkforceProfileEmail,
   resendReviewedWorkforceEnrollment,
+  returnToReviewedWorkforceApplication,
   startReviewedWorkforceEnrollment,
   verifyReviewedWorkforceEnrollment,
   verifyReviewedWorkforceProfileEmail,
@@ -16,12 +17,15 @@ import en from "../../locales/en.json";
 import fr from "../../locales/fr.json";
 import { WorkforceEnrollmentForm } from "./workforce-enrollment-form";
 
+const ownerPush = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: ownerPush }) }));
 vi.mock("next/font/local", () => ({ default: () => ({ className: "scoped-workforce-font" }) }));
 vi.mock("@/lib/server/workforce-enrollment", () => ({
   cancelReviewedWorkforceEnrollment: vi.fn(),
   completeReviewedWorkforceEnrollment: vi.fn(),
   inspectReviewedWorkforceEnrollmentEntry: vi.fn(),
   resendReviewedWorkforceEnrollment: vi.fn(),
+  returnToReviewedWorkforceApplication: vi.fn(),
   replaceReviewedWorkforceProfileEmail: vi.fn(),
   startReviewedWorkforceEnrollment: vi.fn(),
   verifyReviewedWorkforceEnrollment: vi.fn(),
@@ -70,7 +74,11 @@ function deferred<T>() {
 beforeEach(() => {
   vi.resetAllMocks();
   window.history.replaceState(null, "", "/ui/v2/login/workforce-enrollment");
-  vi.mocked(startReviewedWorkforceEnrollment).mockResolvedValue({ state: "profile_email_verification_pending", email });
+  vi.mocked(startReviewedWorkforceEnrollment).mockResolvedValue({
+    state: "profile_email_verification_pending",
+    email,
+    requestId,
+  });
   vi.mocked(verifyReviewedWorkforceProfileEmail).mockResolvedValue({ state: "profile_email_verified" });
   vi.mocked(verifyReviewedWorkforceEnrollment).mockResolvedValue({ state: "identity_link_pending" });
   vi.mocked(cancelReviewedWorkforceEnrollment).mockResolvedValue({ state: "cancelled" });
@@ -324,7 +332,7 @@ describe("reviewed workforce enrollment presentation", () => {
     mount();
     vi.mocked(startReviewedWorkforceEnrollment)
       .mockResolvedValueOnce({ error: "unavailable" })
-      .mockResolvedValueOnce({ state: "profile_email_verification_pending", email });
+      .mockResolvedValueOnce({ state: "profile_email_verification_pending", email, requestId });
     await click(en.workforceEnrollment.start);
     expect(screen.getByRole("button", { name: en.workforceEnrollment.start })).toBeDisabled();
     await click(en.workforceEnrollment.check);
@@ -552,5 +560,73 @@ describe("profile request accepted/unknown/explicit replacement", () => {
     expect(screen.getByRole("heading", { name: en.workforceEnrollment.cancelledTitle })).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(verifyReviewedWorkforceProfileEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("explicit owning application return", () => {
+  const entry = () => ({
+    ...otp(),
+    state: "identity_link_pending" as const,
+    returnApplication: "identity" as const,
+    expiresAt: new Date(Date.now() - 1).toISOString(),
+  });
+  it("withdraws a removed return registration on status readback", async () => {
+    mount(entry());
+    vi.mocked(inspectReviewedWorkforceEnrollmentEntry).mockResolvedValue({ state: "oidc_request_required", email });
+    await click(en.workforceEnrollment.check);
+    expect(screen.queryByRole("button", { name: "Return to Identity" })).toBeNull();
+    expect(returnToReviewedWorkforceApplication).not.toHaveBeenCalled();
+  });
+  it.each(["en", "fr"])("shows one clear recovery action in %s without stale proof or delivery", (locale) => {
+    const copy = locale === "fr" ? fr.workforceEnrollment : en.workforceEnrollment;
+    mount(entry(), locale);
+    expect(screen.getByRole("heading", { name: copy.returnTitle })).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: copy.return.replace("{application}", copy.shortApplications.identity) }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: copy.complete })).toBeNull();
+    expect(screen.queryByText(copy.verifiedEmail)).toBeNull();
+    expect(screen.getByText(email)).toBeInTheDocument();
+    expect(returnToReviewedWorkforceApplication).not.toHaveBeenCalled();
+    expect(startReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+  });
+  it("remembers the server invitation only on click and navigates after acceptance", async () => {
+    const pending = deferred<{ redirect: string }>();
+    vi.mocked(returnToReviewedWorkforceApplication).mockReturnValue(pending.promise);
+    mount(entry());
+    await click("Return to Identity");
+    expect(screen.getByRole("button", { name: en.workforceEnrollment.returning })).toBeDisabled();
+    expect(ownerPush).not.toHaveBeenCalled();
+    expect(returnToReviewedWorkforceApplication).toHaveBeenCalledWith({ operationId });
+    await act(async () => pending.resolve({ redirect: "https://identity.paypm.test/" }));
+    expect(ownerPush).toHaveBeenCalledWith("https://identity.paypm.test/");
+    expect(completeReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+  });
+  it("does not navigate on late reply after unmount", async () => {
+    const pending = deferred<{ redirect: string }>();
+    vi.mocked(returnToReviewedWorkforceApplication).mockReturnValue(pending.promise);
+    const page = mount(entry());
+    await click("Return to Identity");
+    page.unmount();
+    await act(async () => pending.resolve({ redirect: "https://identity.paypm.test/" }));
+    expect(ownerPush).not.toHaveBeenCalled();
+  });
+  it("keeps recovery retry and readonly check after unconfirmed return", async () => {
+    vi.mocked(returnToReviewedWorkforceApplication).mockResolvedValue({ error: "private-detail" });
+    mount(entry());
+    await click("Return to Identity");
+    expect(ownerPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Return to Identity" })).toBeEnabled();
+    await click(en.workforceEnrollment.check);
+    expect(inspectReviewedWorkforceEnrollmentEntry).toHaveBeenCalledOnce();
+    expect(startReviewedWorkforceEnrollment).not.toHaveBeenCalled();
+  });
+  it("moves to recovery at expiry without reload and does not navigate automatically", async () => {
+    vi.useFakeTimers();
+    mount({ ...otp(), state: "identity_link_pending", returnApplication: "identity" });
+    await act(() => vi.advanceTimersByTime(300000));
+    expect(screen.getByRole("heading", { name: en.workforceEnrollment.returnTitle })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Return to Identity" })).toBeEnabled();
+    expect(ownerPush).not.toHaveBeenCalled();
   });
 });

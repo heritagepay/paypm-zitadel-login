@@ -472,6 +472,14 @@
     }
   },
   "workforceEnrollment": {
+    "returnTitle": "Reprenons votre inscription.",
+    "returnBody": "Votre invitation est conservée. Revenez à {application} pour ouvrir une nouvelle connexion.",
+    "returnExpired": "Votre vérification a expiré. Un nouveau code sera nécessaire.",
+    "return": "Revenir à {application}",
+    "returning": "Ouverture de l’application…",
+    "returnHint": "Choisissez « Se connecter ». Vous reviendrez à cette invitation.",
+    "applications": { "identity": "Identity Administration", "operations": "Operations", "super-admin": "Super Admin" },
+    "shortApplications": { "identity": "Identity", "operations": "Operations", "super-admin": "Super Admin" },
     "team": "Accès équipe",
     "progressLabel": "Progression de l’inscription",
     "stepEmail": "Email",
