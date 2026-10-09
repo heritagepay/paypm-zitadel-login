@@ -48,11 +48,16 @@ function policy() {
   if (u.protocol !== "https:" || u.origin !== origin || u.hostname !== rpId) throw deny();
   return { ...p, origin, rpId };
 }
+/** Next removes its configured basePath before constructing the route-handler Request. */
+function actionPath(url: URL) {
+  const base = "/ui/v2/login";
+  return url.pathname.startsWith(base + "/") ? url.pathname.slice(base.length) : url.pathname;
+}
 function privateRoute(request: Request, purpose: IdentityPrivatePurpose, path: string) {
   const u = new URL(request.url);
   if (
     request.method !== "POST" ||
-    u.pathname !== "/ui/v2/login/api/internal/v1/identity/actions/requests" + path ||
+    actionPath(u) !== "/api/internal/v1/identity/actions/requests" + path ||
     u.search ||
     request.headers.has("origin") ||
     request.headers.has("cookie")
@@ -62,7 +67,7 @@ function privateRoute(request: Request, purpose: IdentityPrivatePurpose, path: s
 }
 function publicRoute(request: Request, id: string, operation: "challenge" | "complete" | "cancel") {
   const u = new URL(request.url);
-  if (u.pathname !== `/ui/v2/login/api/identity/actions/${id}/${operation}` || u.search) throw deny();
+  if (actionPath(u) !== `/api/identity/actions/${id}/${operation}` || u.search) throw deny();
 }
 async function input(request: Request, keys: string[]) {
   const body = await request.text();
@@ -374,6 +379,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
   try {
     if (predecessorId && !identityUuid(predecessorId)) throw deny();
     privateRoute(request, "PAYPM_IDENTITY_ACTION_BFF_TOKEN", predecessorId ? `/${predecessorId}/continue` : "");
+    stage = "exact-envelope";
     const v = await input(request, [
       "requestId",
       "operationKey",
@@ -385,6 +391,7 @@ export async function startIdentityAction(request: Request, predecessorId?: stri
       "nonce",
       "clientId",
     ]);
+    stage = "exact-command";
     assertIdentityCommand(v.expected, v.command);
     if (
       !identityActionPair(v) ||
