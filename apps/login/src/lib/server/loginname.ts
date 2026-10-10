@@ -26,6 +26,7 @@ import {
 } from "../zitadel";
 import { createSessionAndUpdateCookie } from "./cookie";
 import { getPublicHost } from "./host";
+import { workforcePolicy, workforceRequestClient } from "../workforce-policy";
 
 const logger = createLogger("loginname");
 
@@ -43,6 +44,17 @@ const ORG_SUFFIX_REGEX = /(?<=@)(.+)/;
 export async function sendLoginname(command: SendLoginnameCommand) {
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
+
+  // Stale bookmarked account selectors must enter the same fresh email flow.
+  // This redirect issues no code, creates no session and proves no identity.
+  const policy = workforcePolicy();
+  if (policy?.emailOtpReady && command.requestId &&
+      await workforceRequestClient(serviceConfig, command.requestId)) {
+    return { redirect: `/loginname?${new URLSearchParams({
+      requestId: command.requestId,
+      organization: policy.organizationId,
+    })}` };
+  }
 
   const t = await getTranslations("loginname");
 
