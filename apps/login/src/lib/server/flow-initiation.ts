@@ -28,6 +28,7 @@ import escapeHtml from "escape-html";
 import { NextRequest, NextResponse } from "next/server";
 import { buildCSP } from "../csp";
 import { resumeReviewedWorkforceEnrollmentRequest } from "./workforce-enrollment";
+import { workforceClientMode, workforcePolicy } from "../workforce-policy";
 
 const logger = createLogger("flow-initiation");
 
@@ -130,6 +131,25 @@ export async function handleOIDCFlowInitiation(params: FlowInitiationParams): Pr
       "redirect" in enrollmentReturn
         ? NextResponse.redirect(enrollmentReturn.redirect)
         : NextResponse.json({ error: "Reviewed workforce enrollment unavailable" }, { status: 400 });
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Frame-Options", "deny");
+    return response;
+  }
+
+  // A registered workforce authorization request starts at email entry.
+  // Remembered username/password flows cannot turn OTP-only staff into a new
+  // invitation or silently finalize an older provider session. Reviewed
+  // enrollment returns above keep their separate original-operation workflow.
+  const policy = workforcePolicy();
+  if (policy?.emailOtpReady && authRequest && policy.clientIds.includes(authRequest.clientId)) {
+    if (!workforceClientMode(authRequest.clientId)) {
+      return NextResponse.json({ error: "Workforce admission unavailable" }, { status: 400 });
+    }
+    const target = constructUrl(request, "/loginname");
+    target.searchParams.set("requestId", requestId);
+    target.searchParams.set("organization", policy.organizationId);
+    const response = NextResponse.redirect(target);
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Referrer-Policy", "no-referrer");
     response.headers.set("X-Frame-Options", "deny");
