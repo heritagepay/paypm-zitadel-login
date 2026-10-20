@@ -1,29 +1,70 @@
 "use client";
 
-import { Boundary } from "@/components/boundary";
-import { Button } from "@/components/button";
-import { ThemeWrapper } from "@/components/theme-wrapper";
-import { Translated } from "@/components/translated";
+import "@/styles/globals.scss";
 
-export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+import { PaypmBrand } from "@/components/paypm-brand";
+import { paypmFont } from "@/lib/paypm-font";
+import { useEffect, useState } from "react";
+import englishMessages from "../../locales/en.json";
+import frenchMessages from "../../locales/fr.json";
+
+type Locale = "en" | "fr";
+
+const messages = {
+  en: englishMessages.paypmAuth,
+  fr: frenchMessages.paypmAuth,
+};
+
+export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const [locale, setLocale] = useState<Locale>("en");
+
+  useEffect(() => {
+    setLocale(navigator.language.toLowerCase().startsWith("fr") ? "fr" : "en");
+  }, []);
+
+  const copy = messages[locale];
+
+  // The root providers may have failed. This choice only translates the fallback;
+  // the server-owned language cookie and authentication context remain intact.
   return (
     // global-error must include html and body tags
-    <html>
+    <html lang={locale} className={paypmFont.className} style={{ colorScheme: "light" }}>
+      <head>
+        <meta name="color-scheme" content="light" />
+        <title>{`${copy.unavailableTitle} · PayPM`}</title>
+      </head>
       <body>
-        <ThemeWrapper branding={undefined}>
-          <Boundary labels={["Login Error"]} color="red">
-            <div className="space-y-4">
-              <div className="text-sm text-red-500 dark:text-red-500">
-                <span className="font-bold">Error:</span> {error?.message}
+        <div className="paypm-auth-background">
+          <div className="paypm-auth-frame">
+            <header className="paypm-auth-arrival">
+              <PaypmBrand />
+              <div className="paypm-language-fallback">
+                <label htmlFor="error-language">{copy.language}</label>
+                <select
+                  id="error-language"
+                  value={locale}
+                  onChange={(event) => setLocale(event.target.value === "fr" ? "fr" : "en")}
+                >
+                  <option value="en" lang="en">
+                    English
+                  </option>
+                  <option value="fr" lang="fr">
+                    Français
+                  </option>
+                </select>
               </div>
-              <div>
-                <Button data-i18n-key="error.tryagain" onClick={() => reset()}>
-                  <Translated i18nKey="tryagain" namespace="error" />
-                </Button>
+            </header>
+            <main className="paypm-auth-work">
+              <div role="alert">
+                <h1>{copy.unavailableTitle}</h1>
+                <p>{copy.unavailableDescription}</p>
               </div>
-            </div>
-          </Boundary>
-        </ThemeWrapper>
+              <button type="button" className="paypm-button" data-variant="Primary" onClick={() => reset()}>
+                {copy.tryAgain}
+              </button>
+            </main>
+          </div>
+        </div>
       </body>
     </html>
   );

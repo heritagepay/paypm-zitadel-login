@@ -1,5 +1,7 @@
-import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createRef } from "react";
+import { useForm } from "react-hook-form";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TextInput } from "./input";
 
 describe("TextInput Component", () => {
@@ -10,6 +12,7 @@ describe("TextInput Component", () => {
   });
 
   afterEach(() => {
+    cleanup();
     process.env = originalEnv;
   });
 
@@ -178,11 +181,158 @@ describe("TextInput Component", () => {
 
   describe("Accessibility", () => {
     it("should connect label to input", () => {
-      const { container } = render(<TextInput label="Accessible Input" />);
-      const label = container.querySelector("label");
-      const input = container.querySelector("input");
-      expect(label).toBeTruthy();
-      expect(input).toBeTruthy();
+      render(<TextInput label="Accessible Input" id="account-name" />);
+      const input = screen.getByRole("textbox", { name: "Accessible Input" });
+      expect(screen.getByLabelText("Accessible Input")).toBe(input);
+      expect(input).toHaveAttribute("id", "account-name");
+    });
+
+    it("should keep required markers, suffixes and feedback out of the accessible name", () => {
+      render(
+        <TextInput
+          label="Email"
+          required
+          suffix="example.com"
+          error={<span>Choose a different account</span>}
+          success="Account found"
+        />,
+      );
+
+      const input = screen.getByRole("textbox", { name: "Email" });
+      expect(input).toHaveAccessibleName("Email");
+      expect(input).toBeRequired();
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input).toHaveAccessibleDescription("Choose a different account Account found");
+      expect(screen.getByText("@example.com")).toBeVisible();
+    });
+
+    it("should merge caller hints with ReactNode error and success descriptions", () => {
+      render(
+        <>
+          <p id="account-hint">Use your workplace account.</p>
+          <p id="account-format">Enter an email or username.</p>
+          <TextInput
+            id="work-account"
+            label="Account"
+            aria-describedby="account-hint account-format"
+            aria-invalid={false}
+            error={<span>This account is unavailable.</span>}
+            success={<span>Your entry was saved.</span>}
+          />
+        </>,
+      );
+
+      const input = screen.getByRole("textbox", { name: "Account" });
+      expect(input).toHaveAttribute(
+        "aria-describedby",
+        "account-hint account-format work-account-error work-account-success",
+      );
+      expect(input).toHaveAccessibleDescription(
+        "Use your workplace account. Enter an email or username. This account is unavailable. Your entry was saved.",
+      );
+      expect(input).toHaveAttribute("aria-invalid", "true");
+    });
+
+    it("should generate distinct stable input and feedback IDs for repeated fields", () => {
+      const fields = (
+        <>
+          <TextInput label="Account" error="First error" success="First success" />
+          <TextInput label="Account" error="Second error" success="Second success" />
+        </>
+      );
+      const { container, rerender } = render(fields);
+      const inputs = screen.getAllByRole("textbox", { name: "Account" });
+      const ids = Array.from(container.querySelectorAll("[id]"), (element) => element.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(inputs[0]).toHaveAccessibleDescription("First error First success");
+      expect(inputs[1]).toHaveAccessibleDescription("Second error Second success");
+
+      rerender(fields);
+      expect(Array.from(container.querySelectorAll("[id]"), (element) => element.id)).toEqual(ids);
+    });
+
+    it("should remove stale invalid state and feedback references when messages clear", () => {
+      const { rerender } = render(
+        <>
+          <p id="entry-hint">Check your account.</p>
+          <TextInput label="Account" aria-describedby="entry-hint" error="Rejected" success="Saved" />
+        </>,
+      );
+      const input = screen.getByRole("textbox", { name: "Account" });
+      const inputId = input.id;
+
+      rerender(
+        <>
+          <p id="entry-hint">Check your account.</p>
+          <TextInput label="Account" aria-describedby="entry-hint" />
+        </>,
+      );
+
+      expect(input).toHaveAttribute("id", inputId);
+      expect(input).not.toHaveAttribute("aria-invalid");
+      expect(input).toHaveAttribute("aria-describedby", "entry-hint");
+      expect(input).toHaveAccessibleDescription("Check your account.");
+      expect(document.getElementById(`${inputId}-error`)).toBeNull();
+      expect(document.getElementById(`${inputId}-success`)).toBeNull();
+    });
+
+    it("should retain caller-owned invalid state when no component error is supplied", () => {
+      render(<TextInput label="Account" aria-invalid="grammar" />);
+      expect(screen.getByRole("textbox", { name: "Account" })).toHaveAttribute("aria-invalid", "grammar");
+    });
+
+    it("should forward its ref and native event handlers to the actual input", () => {
+      const ref = createRef<HTMLInputElement>();
+      const onChange = vi.fn();
+      const onBlur = vi.fn();
+      render(
+        <TextInput
+          label="Account"
+          ref={ref}
+          name="loginName"
+          autoComplete="username"
+          className="caller-input"
+          onChange={onChange}
+          onBlur={onBlur}
+        />,
+      );
+      const input = screen.getByRole("textbox", { name: "Account" });
+      fireEvent.change(input, { target: { value: "account@example.com" } });
+      fireEvent.blur(input);
+
+      expect(ref.current).toBe(input);
+      expect(ref.current?.value).toBe("account@example.com");
+      expect(input).toHaveAttribute("name", "loginName");
+      expect(input).toHaveAttribute("autocomplete", "username");
+      expect(input).toHaveClass("paypm-input", "caller-input");
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onChange.mock.calls[0][0].target).toBe(input);
+      expect(onBlur).toHaveBeenCalledOnce();
+      expect(onBlur.mock.calls[0][0].target).toBe(input);
+    });
+
+    it("should preserve registered field values and blur state for form submission", async () => {
+      const onSubmit = vi.fn();
+
+      function RegisteredForm() {
+        const { register, handleSubmit, formState } = useForm<{ loginName: string }>({ mode: "onBlur" });
+        return (
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <TextInput label="Account" {...register("loginName", { required: true })} />
+            <output>{formState.touchedFields.loginName ? "Touched" : "Untouched"}</output>
+            <button type="submit">Continue</button>
+          </form>
+        );
+      }
+
+      render(<RegisteredForm />);
+      const input = screen.getByRole("textbox", { name: "Account" });
+      fireEvent.change(input, { target: { value: "account@example.com" } });
+      fireEvent.blur(input);
+      await waitFor(() => expect(screen.getByText("Touched")).toBeVisible());
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+      expect(onSubmit.mock.calls[0][0]).toEqual({ loginName: "account@example.com" });
     });
 
     it("should show required indicator", () => {

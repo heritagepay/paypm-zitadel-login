@@ -4,11 +4,13 @@ import { handleServerActionResponse } from "@/lib/client-utils";
 import { skipMFAAndContinueWithNextUrl } from "@/lib/server/session";
 import { LoginSettings, SecondFactorType } from "@zitadel/proto/zitadel/settings/v2/login_settings_pb";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Alert } from "./alert";
 import { EMAIL, SMS, TOTP, U2F } from "./auth-methods";
 import { AutoSubmitForm } from "./auto-submit-form";
+import { Spinner } from "./spinner";
 import { Translated } from "./translated";
 
 type Props = {
@@ -39,10 +41,48 @@ export function ChooseSecondFactorToSetup({
   force,
 }: Props) {
   const router = useRouter();
+  const t = useTranslations("mfa.set");
   const params = new URLSearchParams({});
 
   const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const errorId = useId();
   const [samlData, setSamlData] = useState<{ url: string; fields: Record<string, string> } | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  async function skip() {
+    if (force || inFlight.current || !mounted.current) return;
+    inFlight.current = true;
+    setLoading(true);
+    setError("");
+    let continuing = false;
+    try {
+      const response = await skipMFAAndContinueWithNextUrl({ userId, loginName, sessionId, organization, requestId });
+      if (!mounted.current) return;
+      let failed = false;
+      const handled = handleServerActionResponse(response, router, setSamlData, () => {
+        failed = true;
+        setError(t("error"));
+      });
+      continuing = handled && !failed;
+      if (!handled) setError(t("error"));
+    } catch {
+      if (mounted.current) setError(t("error"));
+    } finally {
+      if (!continuing) {
+        inFlight.current = false;
+        if (mounted.current) setLoading(false);
+      }
+    }
+  }
 
   if (loginName) {
     params.append("loginName", loginName);
@@ -83,26 +123,20 @@ export function ChooseSecondFactorToSetup({
       </div>
       {!force && (
         <button
-          className="hover:text-primary-light-500 dark:hover:text-primary-dark-500 text-sm transition-all"
-          onClick={async () => {
-            const skipResponse = await skipMFAAndContinueWithNextUrl({
-              userId,
-              loginName,
-              sessionId,
-              organization,
-              requestId,
-            });
-
-            handleServerActionResponse(skipResponse, router, setSamlData, setError);
-          }}
+          className="paypm-mfa-skip text-sm"
+          onClick={() => void skip()}
+          disabled={loading}
+          aria-busy={loading}
+          aria-describedby={error ? errorId : undefined}
           type="button"
           data-testid="reset-button"
         >
-          <Translated i18nKey="set.skip" namespace="mfa" />
+          {loading && <Spinner className="h-5 w-5 flex-shrink-0" />}
+          <Translated i18nKey={loading ? "set.pending" : "set.skip"} namespace="mfa" />
         </button>
       )}
       {error && (
-        <div className="py-4" data-testid="error">
+        <div id={errorId} className="py-4" data-testid="error">
           <Alert>{error}</Alert>
         </div>
       )}

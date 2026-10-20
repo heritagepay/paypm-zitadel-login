@@ -32,7 +32,9 @@ export const BaseButton = forwardRef<HTMLButtonElement, SignInWithIdentityProvid
       type="submit"
       ref={ref}
       disabled={formStatus.pending}
+      aria-busy={formStatus.pending}
       className={clsx(
+        "paypm-idp-button",
         `text-text-light-500 focus:border-primary-light-500 dark:text-text-dark-500 focus:dark:border-primary-dark-500 flex flex-1 cursor-pointer flex-row items-center px-4 text-sm transition-all outline-none hover:border-black hover:dark:border-white`,
         buttonRoundness,
         idpButtonAppearance,

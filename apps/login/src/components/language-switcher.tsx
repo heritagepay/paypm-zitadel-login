@@ -2,77 +2,61 @@
 
 import { setLanguageCookie } from "@/lib/cookies";
 import { Lang } from "@/lib/i18n";
-import { APPEARANCE_STYLES, getComponentRoundness, getThemeConfig } from "@/lib/theme";
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
-import { CheckIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
-import clsx from "clsx";
-import { useLocale } from "next-intl";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-
-// Helper function to get language switcher roundness from theme
-function getLanguageSwitcherRoundness(): string {
-  return getComponentRoundness("button");
-}
-
-// Helper function to get card appearance styles for the language switcher
-function getLanguageSwitcherCardAppearance(): string {
-  const themeConfig = getThemeConfig();
-  const appearance = APPEARANCE_STYLES[themeConfig.appearance];
-  return appearance?.card || "bg-black/5 dark:bg-white/5"; // Fallback to current styling
-}
+import { useId, useRef, useState, useTransition } from "react";
 
 export function LanguageSwitcher({ languages }: { languages: Lang[] }) {
   const currentLocale = useLocale();
-  const switcherRoundness = getLanguageSwitcherRoundness();
-  const cardAppearance = getLanguageSwitcherCardAppearance();
-
-  const [selected, setSelected] = useState(languages.find((l) => l.code === currentLocale) || languages[0]);
-
+  const t = useTranslations("paypmAuth");
   const router = useRouter();
+  const errorId = useId();
+  const writing = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [refreshing, startTransition] = useTransition();
+  const currentLanguage = languages.find((language) => language.code === currentLocale) || languages[0];
 
-  const handleChange = async (language: Lang) => {
-    setSelected(language);
-    const newLocale = language.code;
-
-    await setLanguageCookie(newLocale);
-
-    router.refresh();
-  };
+  async function changeLanguage(code: string) {
+    if (writing.current || refreshing || code === currentLocale || !languages.some((language) => language.code === code)) {
+      return;
+    }
+    writing.current = true;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await setLanguageCookie(code);
+      startTransition(() => router.refresh());
+    } catch {
+      setFailed(true);
+    } finally {
+      writing.current = false;
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="w-32">
-      <Listbox value={selected} onChange={handleChange}>
-        <ListboxButton
-          className={clsx(
-            `relative block w-full py-1.5 pr-8 pl-3 text-left text-sm/6 text-black dark:text-white ${switcherRoundness}`,
-            cardAppearance,
-            "focus:outline-none data-[focus]:outline-2 data-[focus]:-outline-offset-2 data-[focus]:outline-white/25",
-          )}
-        >
-          {selected.name}
-          <ChevronDownIcon className="group pointer-events-none absolute top-2.5 right-2.5 size-4" aria-hidden="true" />
-        </ListboxButton>
-        <ListboxOptions
-          anchor="bottom"
-          transition
-          className={clsx(
-            `bg-background-light-500 dark:bg-background-dark-500 w-[var(--button-width)] rounded-md border border-black/5 p-1 [--anchor-gap:var(--spacing-1)] focus:outline-none dark:border-white/5`,
-            "transition duration-100 ease-in data-[leave]:data-[closed]:opacity-0",
-          )}
-        >
-          {languages.map((lang) => (
-            <ListboxOption
-              key={lang.code}
-              value={lang}
-              className={`group flex cursor-default items-center gap-2 px-3 py-1.5 select-none data-[focus]:bg-black/10 dark:data-[focus]:bg-white/10 ${switcherRoundness}`}
-            >
-              <CheckIcon className="invisible size-4 group-data-[selected]:visible" />
-              <div className="text-sm/6 text-black dark:text-white">{lang.name}</div>
-            </ListboxOption>
-          ))}
-        </ListboxOptions>
-      </Listbox>
+    <div className="paypm-language" aria-busy={busy || refreshing}>
+      <select
+        aria-label={t("language")}
+        aria-describedby={failed ? errorId : undefined}
+        value={currentLanguage?.code || ""}
+        disabled={busy || refreshing || languages.length === 0}
+        onChange={(event) => void changeLanguage(event.target.value)}
+      >
+        {languages.map((language) => (
+          <option key={language.code} value={language.code} lang={language.code}>
+            {language.name}
+          </option>
+        ))}
+      </select>
+      <ChevronDownIcon className="paypm-language-chevron" aria-hidden="true" />
+      {failed && (
+        <p id={errorId} role="alert" className="paypm-language-error">
+          {t("languageError")}
+        </p>
+      )}
     </div>
   );
 }

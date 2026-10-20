@@ -1,7 +1,9 @@
+import { visibleLoginName } from "@/lib/visible-login-name";
 import { Avatar } from "@/components/avatar";
 import { getComponentRoundness } from "@/lib/theme";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { Translated } from "./translated";
 
 // Helper function to get user avatar container roundness from theme
 function getUserAvatarRoundness(): string {
@@ -36,18 +38,23 @@ export function UserAvatar({ loginName, displayName, showDropdown, searchParams 
   }
 
   return (
-    <div className={`flex h-full flex-row items-center border p-[1px] dark:border-white/20 ${userAvatarRoundness}`}>
+    <div className={`paypm-account flex h-full flex-row items-center border p-[1px] ${userAvatarRoundness}`}>
       <div>
         <Avatar size="small" name={displayName ?? loginName ?? ""} loginName={loginName ?? ""} />
       </div>
-      <span className="text-14px ml-4 max-w-[250px] overflow-hidden pr-4 text-ellipsis">{loginName}</span>
+      <span className="text-14px ml-4 max-w-[250px] overflow-hidden pr-4 text-ellipsis">
+        {visibleLoginName(loginName) ?? displayName}
+      </span>
       <span className="flex-grow"></span>
       {showDropdown && (
         <Link
           href={"/accounts?" + params}
           className={`mr-1 ml-4 flex items-center justify-center p-1 transition-all hover:bg-black/10 dark:hover:bg-white/10 ${userAvatarRoundness}`}
         >
-          <ChevronDownIcon className="h-4 w-4" />
+          <span className="sr-only">
+            <Translated namespace="paypmAuth" i18nKey="changeAccount" />
+          </span>
+          <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
         </Link>
       )}
     </div>

@@ -2,6 +2,7 @@ import { getServiceConfig } from "@/lib/service-url";
 import { getAllowedLanguages, getHostedLoginTranslation } from "@/lib/zitadel";
 import { cookies, headers } from "next/headers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import frenchMessages from "../../locales/fr.json";
 import config from "./request";
 
 vi.mock("next-intl/server", () => ({ getRequestConfig: (callback: unknown) => callback }));
@@ -25,7 +26,7 @@ describe("Login V2 message precedence", () => {
     const result = await getConfig();
 
     expect(result.locale).toBe("fr");
-    expect(result.messages.loginname.title).toBe("Bienvenue!");
+    expect(result.messages.loginname.title).toBe(frenchMessages.loginname.title);
     expect(getHostedLoginTranslation).toHaveBeenCalledWith({
       serviceConfig: { baseUrl: "https://example.test" },
       locale: "fr",

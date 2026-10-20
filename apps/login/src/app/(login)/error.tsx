@@ -1,27 +1,30 @@
 "use client";
 
-import { Boundary } from "@/components/boundary";
-import { Button } from "@/components/button";
-import { Translated } from "@/components/translated";
-import { useEffect } from "react";
+import { PaypmBrand } from "@/components/paypm-brand";
+import { useTranslations } from "next-intl";
 
-export default function Error({ error, reset }: any) {
-  useEffect(() => {
-    console.log("logging error:", error);
-  }, [error]);
+type Props = {
+  error: Error & { digest?: string };
+  reset: () => void;
+};
+
+export default function LoginError({ reset }: Props) {
+  const t = useTranslations("paypmAuth");
 
   return (
-    <Boundary labels={["Login Error"]} color="red">
-      <div className="space-y-4">
-        <div className="text-sm text-red-500 dark:text-red-500">
-          <strong className="font-bold">Error:</strong> {error?.message}
+    <div className="paypm-auth-frame">
+      <header className="paypm-auth-arrival">
+        <PaypmBrand />
+      </header>
+      <main className="paypm-auth-work">
+        <div role="alert">
+          <h1>{t("unavailableTitle")}</h1>
+          <p>{t("unavailableDescription")}</p>
         </div>
-        <div>
-          <Button data-i18n-key="error.tryagain" onClick={() => reset()}>
-            <Translated i18nKey="tryagain" namespace="error" />
-          </Button>
-        </div>
-      </div>
-    </Boundary>
+        <button type="button" className="paypm-button" data-variant="Primary" onClick={() => reset()}>
+          {t("tryAgain")}
+        </button>
+      </main>
+    </div>
   );
 }

@@ -99,7 +99,7 @@ export function UsernameForm({
   return (
     <>
       {samlData && <AutoSubmitForm url={samlData.url} fields={samlData.fields} />}
-      <form className="w-full">
+      <form className="paypm-identifier-form w-full" aria-busy={loading}>
         <div className="">
           <TextInput
             type="text"
@@ -113,27 +113,6 @@ export function UsernameForm({
             data-testid="username-text-input"
             suffix={suffix}
           />
-          {allowRegister && (
-            <button
-              className="hover:text-primary-light-500 dark:hover:text-primary-dark-500 text-sm transition-all"
-              onClick={() => {
-                const registerParams = new URLSearchParams();
-                if (organization) {
-                  registerParams.append("organization", organization);
-                }
-                if (requestId) {
-                  registerParams.append("requestId", requestId);
-                }
-
-                router.push("/register?" + registerParams);
-              }}
-              type="button"
-              disabled={loading}
-              data-testid="register-button"
-            >
-              <Translated i18nKey="register" namespace="loginname" />
-            </button>
-          )}
         </div>
 
         {error && (
@@ -141,13 +120,11 @@ export function UsernameForm({
             <Alert>{error}</Alert>
           </div>
         )}
-        <div className="mt-4 flex w-full flex-row items-center">
-          <BackButton data-testid="back-button" />
-          <span className="flex-grow"></span>
+        <div className="paypm-identifier-submit">
           <Button
             data-testid="submit-button"
             type="submit"
-            className="self-end"
+            className="w-full"
             variant={ButtonVariants.Primary}
             disabled={loading || !formState.isValid}
             onClick={handleSubmit((e) => submitLoginName(e, organization))}
@@ -156,6 +133,33 @@ export function UsernameForm({
             <Translated i18nKey="submit" namespace="loginname" />
           </Button>
         </div>
+        {allowRegister && (
+          <div className="paypm-identifier-register">
+            <Button
+              className="w-full"
+              variant={ButtonVariants.Secondary}
+              onClick={() => {
+                const registerParams = new URLSearchParams();
+                if (organization) registerParams.append("organization", organization);
+                if (requestId) registerParams.append("requestId", requestId);
+                router.push("/register?" + registerParams);
+              }}
+              type="button"
+              disabled={loading}
+              data-testid="register-button"
+            >
+              <Translated i18nKey="register" namespace="loginname" />
+            </Button>
+          </div>
+        )}
+        <div className="paypm-identifier-return">
+          <BackButton data-testid="back-button" />
+        </div>
+        {requestId && (
+          <p className="paypm-auth-return-guidance">
+            <Translated i18nKey="returnToApplication" namespace="paypmAuth" />
+          </p>
+        )}
       </form>
     </>
   );
