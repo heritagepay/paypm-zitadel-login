@@ -86,7 +86,11 @@ export function PasswordForm({ loginSettings, loginName, organization, defaultOr
         setLoading(false);
       });
 
-    if (response && "error" in response) {
+    if (!response) {
+      return;
+    }
+
+    if ("error" in response) {
       setError(response.error as string);
       return;
     }
@@ -111,11 +115,11 @@ export function PasswordForm({ loginSettings, loginName, organization, defaultOr
   return (
     <>
       {samlData && <AutoSubmitForm url={samlData.url} fields={samlData.fields} />}
-      <form className="w-full">
-        <div className={`${error && "animate-shake transform-gpu"}`}>
+      <form className="w-full" aria-busy={loading}>
+        <div>
           <TextInput
             type="password"
-            autoComplete="password"
+            autoComplete="current-password"
             autoFocus
             {...register("password", { required: t("verify.required.password") })}
             label={t("verify.labels.password")}

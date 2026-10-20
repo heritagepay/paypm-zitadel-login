@@ -6,19 +6,14 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { Skeleton } from "@/components/skeleton";
 import { ThemeProvider } from "@/components/theme-provider";
 import { LANGS, getLanguage } from "@/lib/i18n";
+import { paypmFont } from "@/lib/paypm-font";
 import { getServiceConfig } from "@/lib/service-url";
 import { getAllowedLanguages } from "@/lib/zitadel";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
-import { Lato } from "next/font/google";
+import { getLocale, getTranslations } from "next-intl/server";
 import { headers } from "next/headers";
 import React, { Suspense } from "react";
-
-const lato = Lato({
-  weight: ["400", "700", "900"],
-  subsets: ["latin"],
-});
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("common");
@@ -26,6 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   const _headers = await headers();
   const { serviceConfig } = getServiceConfig(_headers);
 
@@ -42,17 +38,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html className={`${lato.className}`} suppressHydrationWarning>
+    <html lang={locale} className={paypmFont.className} suppressHydrationWarning>
       <head />
       <body>
+        <template
+          dangerouslySetInnerHTML={{
+            __html: `<!--
+THESIS: One shared authentication ceremony, not a promotional split or permission dashboard.
+OWN-WORLD: PayPM C3 teal arrival, warm cream work, brass mark, bundled DM Sans, flat 8px controls.
+STORY: Recognize PayPM, confirm account, complete the provider's next step, return to the requesting app.
+FIRST VIEWPORT: 402×874; compact brand/locale row, left heading, angled seam, labeled field, full Continue, subordinate creation and Back. Wide screens bound the same frame at 520px.
+FORM: Owner-pinned C3 arrival seam, selected first composition; key paypm-c3-auth-20260930. No new-world roll.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->`,
+          }}
+        />
         <ThemeProvider>
           <Tooltip.Provider>
             <Suspense
               fallback={
-                <BackgroundWrapper
-                  className={`bg-background-light-600 dark:bg-background-dark-600 relative flex min-h-screen flex-col justify-center`}
-                >
-                  <div className="relative mx-auto w-full max-w-[440px] py-8">
+                <BackgroundWrapper className="paypm-auth-page">
+                  <div className="paypm-auth-container">
                     <Skeleton>
                       <div className="h-40"></div>
                     </Skeleton>
@@ -61,14 +67,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               }
             >
               <LanguageProvider>
-                <BackgroundWrapper
-                  className={`bg-background-light-600 dark:bg-background-dark-600 relative flex min-h-screen flex-col justify-center`}
-                >
-                  <div className="relative mx-auto w-full max-w-[1100px] py-8">
-                    <div>{children}</div>
-                    <div className="mx-auto flex max-w-[440px] flex-row items-center justify-end space-x-4 px-4 py-4 md:max-w-full md:px-8">
+                <BackgroundWrapper className="paypm-auth-page">
+                  <div className="paypm-auth-container">
+                    <div className="paypm-auth-language">
                       <LanguageSwitcher languages={languages} />
                     </div>
+                    <main>{children}</main>
                   </div>
                 </BackgroundWrapper>
               </LanguageProvider>

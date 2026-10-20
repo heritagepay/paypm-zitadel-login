@@ -1,7 +1,22 @@
 {
   "common": {
     "back": "Back",
-    "title": "Login with Zitadel"
+    "title": "Sign in · PayPM"
+  },
+  "paypmAuth": {
+    "language": "Language",
+    "changeAccount": "Change account",
+    "sessionError": "This account action could not be completed. Please try again.",
+    "removeAccount": "Remove remembered account",
+    "expires": "Expires {time}",
+    "languageError": "The language could not be changed. Please try again.",
+    "unavailableTitle": "Sign-in interrupted",
+    "unavailableDescription": "We could not load this step. Try again to continue signing in.",
+    "tryAgain": "Try again",
+    "copySetupLink": "Copy setup link",
+    "setupLinkCopied": "Setup link copied",
+    "setupLinkCopyError": "The setup link could not be copied. Try again.",
+    "returnToApplication": "You will return to your application after signing in."
   },
   "accounts": {
     "title": "Accounts",
@@ -23,12 +38,12 @@
     }
   },
   "loginname": {
-    "title": "Welcome back!",
-    "description": "Enter your login details.",
-    "register": "Register new user",
+    "title": "Welcome back",
+    "description": "Sign in with your PayPM account.",
+    "register": "Create an account",
     "submit": "Continue",
     "labels": {
-      "loginname": "Loginname",
+      "loginname": "Email, phone or username",
       "username": "Username",
       "usernameOrPhoneNumber": "Username or phone number",
       "usernameOrEmail": "Username or email"
@@ -228,7 +243,9 @@
     "set": {
       "title": "Set up 2-Factor",
       "description": "Choose one of the following second factors.",
-      "skip": "Skip"
+      "skip": "Skip",
+      "pending": "Skipping…",
+      "error": "This step could not be skipped. Try again."
     }
   },
   "otp": {
@@ -318,7 +335,7 @@
       "description": "Provide email, first and last name to register."
     },
     "title": "Register",
-    "description": "Create your Zitadel account.",
+    "description": "Create your PayPM account.",
     "noMethodAvailableWarning": "No authentication method available. Please contact your administrator.",
     "selectMethod": "Select the method you would like to authenticate",
     "agreeTo": "To register you must agree to the terms and conditions",
@@ -387,7 +404,7 @@
     "setupAuthenticator": "Setup authenticator",
     "verify": {
       "title": "Verify user",
-      "description": "Enter the Code provided in the verification email.",
+      "description": "Enter the code from your verification email.",
       "noCodeReceived": "Didn't receive a code?",
       "resendCode": "Resend code",
       "codeSent": "A new code has just been sent to your email address.",
@@ -421,7 +438,16 @@
     "description": "Select the method you would like to authenticate",
     "noMethodsAvailable": "No authentication methods available",
     "allSetup": "You have already setup an authenticator!",
-    "linkWithIDP": "or link with an Identity Provider"
+    "linkWithIDP": "or link with an Identity Provider",
+    "methods": {
+      "totp": "Authenticator App",
+      "u2f": "Universal Second Factor",
+      "email": "Code via Email",
+      "sms": "Code via SMS",
+      "passkeys": "Passkeys",
+      "password": "Password",
+      "configured": "Already set up"
+    }
   },
   "device": {
     "usercode": {
@@ -475,7 +501,8 @@
     "lostAccess": "No longer have access to this email?",
     "recovery": "Contact your authorized staff administrator for reviewed recovery. Email changes do not grant additional access.",
     "invitedOnly": "Staff access requires an approved invitation. Some applications also ask for your passkey.",
-    "unavailable": "We could not complete this step. Check your details or retry. If you still need help, contact your staff administrator."
+    "unavailable": "We could not complete this step. Check your details or retry. If you still need help, contact your staff administrator.",
+    "rateLimited": "You have requested several codes. For your security, wait {minutes} min {seconds} s before requesting a new one."
   },
   "operationsAction": {
     "title": "Verify this Operations action",
@@ -501,9 +528,9 @@
       "deploymentGrantApprove": "Approve read access for this deployment",
       "kycGrantReview": "Review KYC review and decision access for this deployment",
       "kycGrantApprove": "Approve KYC review and decision access for this deployment",
+      "kycGrantRevoke": "Revoke KYC review and decision access for this deployment",
       "kycCaseReview": "Review this KYC case",
       "kycCaseDecide": "Confirm this KYC decision",
-      "kycGrantRevoke": "Revoke KYC review and decision access for this deployment",
       "deploymentGrantRevoke": "Revoke read access for this deployment"
     }
   },

@@ -13,7 +13,7 @@ import { getTranslations } from "next-intl/server";
 import { headers } from "next/headers";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("loginname");
+  const t = await getTranslations("common");
   return { title: t("title") };
 }
 

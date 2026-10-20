@@ -24,6 +24,11 @@ import {
 } from "../zitadel";
 
 const unavailable = () => ({ error: "Workforce authentication unavailable" });
+/** A throttled send is a waiting state, not a failure: tell the person how long to wait. */
+const throttled = (error: unknown) =>
+  error instanceof WorkforceStoreError && error.code === "workforce_delivery_rate_limited"
+    ? { error: "rate_limited" as const, retryAfterSeconds: Math.min(Math.max(error.retryAfterSeconds ?? 60, 1), 600) }
+    : unavailable();
 const operation = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 async function cookie(row: WorkforceChallenge, session: Session, token: string) {
@@ -145,8 +150,8 @@ export async function startWorkforceEmailOtp(command: { email: string; requestId
       contact: email,
     });
     return await issue(row, store, await workforceProvider(serviceConfig, policy.organizationId));
-  } catch {
-    return unavailable();
+  } catch (error) {
+    return throttled(error);
   }
 }
 
@@ -209,8 +214,8 @@ export async function resendWorkforceEmailOtp(command: { sessionId: string; requ
       row.id,
     );
     return await issue(next, store, await workforceProvider(serviceConfig, policy.organizationId));
-  } catch {
-    return unavailable();
+  } catch (error) {
+    return throttled(error);
   }
 }
 

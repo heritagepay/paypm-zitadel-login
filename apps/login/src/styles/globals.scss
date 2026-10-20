@@ -14,8 +14,716 @@
 }
 
 html {
-  --background-color: #ffffff;
+  color-scheme: light;
+  --background-color: #faf6ee;
   --dark-background-color: #000000;
+  --paypm-teal: #2c5f66;
+  --paypm-cream: #faf6ee;
+  --paypm-brass: #c9a675;
+  --paypm-ink: #173d3a;
+  --theme-light-background-500: #faf6ee;
+  --theme-light-background-600: #faf6ee;
+  --theme-light-primary-500: #2c5f66;
+  --theme-light-primary-contrast-500: #ffffff;
+  --theme-light-text-500: #173d3a;
+  --theme-light-text-secondary-500: #173d3ac7;
+  --theme-light-warn-500: #9b2c2c;
+}
+
+body {
+  margin: 0;
+  color: var(--theme-light-text-500, var(--paypm-ink));
+  background: var(--paypm-cream);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+// C3 signature: compact teal arrival hands off to one warm working region.
+.paypm-auth-page,
+.paypm-auth-background {
+  min-height: 100svh;
+  padding: clamp(24px, 6vh, 64px) 24px;
+  background: var(--paypm-cream);
+}
+
+.paypm-auth-container {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.paypm-auth-frame {
+  overflow: hidden;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  border: 1px solid color-mix(in srgb, var(--paypm-ink) 18%, var(--paypm-cream));
+  border-radius: 12px;
+  background: var(--paypm-cream);
+}
+
+.paypm-auth-arrival {
+  position: relative;
+  padding: 24px 28px 40px;
+  background: var(--paypm-teal);
+  color: var(--paypm-cream);
+}
+
+.paypm-auth-arrival::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 24px;
+  background: var(--paypm-cream);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+
+.paypm-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  height: 40px;
+  color: var(--paypm-cream);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.paypm-brand svg {
+  display: block;
+  flex: none;
+  background: color-mix(in srgb, var(--paypm-cream) 10%, var(--paypm-teal));
+  border-radius: 8px;
+}
+
+.paypm-auth-title {
+  margin-top: 28px;
+}
+
+.paypm-auth-frame h1,
+.paypm-auth-frame .ztdl-h1 {
+  margin: 0;
+  text-align: start;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+.paypm-auth-title .ztdl-p {
+  margin-top: 8px;
+  color: var(--paypm-cream);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.paypm-auth-title > :first-child > * + * {
+  margin-top: 12px;
+}
+
+.paypm-auth-work {
+  padding: 24px 28px 28px;
+  overflow-wrap: anywhere;
+}
+
+.paypm-auth-work > * + * {
+  margin-top: 20px;
+}
+
+.paypm-auth-organization-brand img {
+  max-height: 40px;
+  width: auto;
+  max-width: 148px;
+  object-fit: contain;
+}
+
+.paypm-auth-frame a:focus-visible,
+.paypm-auth-frame button:focus-visible,
+.paypm-auth-frame input:focus-visible {
+  outline: 3px solid var(--paypm-teal);
+  outline-offset: 3px;
+}
+
+.paypm-language select:focus-visible {
+  outline: 3px solid var(--paypm-cream);
+  outline-offset: 3px;
+}
+
+.paypm-field {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.paypm-field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--theme-light-text-500, var(--paypm-ink));
+}
+
+.paypm-input {
+  width: 100%;
+  min-width: 0;
+  background: #ffffff;
+  border-color: color-mix(in srgb, var(--paypm-ink) 50%, #ffffff);
+  color: var(--theme-light-text-500, var(--paypm-ink));
+  font-size: 16px;
+  box-shadow: none;
+}
+
+.paypm-input-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.paypm-input-row .paypm-input {
+  flex: 1;
+  width: 0;
+}
+
+.paypm-input-suffix {
+  display: flex;
+  align-items: center;
+  flex: none;
+  max-width: 50%;
+  padding-inline: 8px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.paypm-field-feedback {
+  height: auto;
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.paypm-field-feedback:not([id]) {
+  display: none;
+}
+
+.paypm-auth-frame .animate-shake {
+  animation: none;
+}
+
+.paypm-alert[role="alert"] {
+  background: color-mix(in srgb, var(--paypm-brass) 18%, var(--paypm-cream));
+  border-color: color-mix(in srgb, var(--paypm-ink) 50%, var(--paypm-cream));
+  color: var(--paypm-ink);
+}
+
+.paypm-button {
+  min-height: 48px;
+  min-width: 44px;
+  max-width: 100%;
+  height: auto;
+  padding: 10px 16px;
+  justify-content: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: none;
+  transition-duration: 120ms;
+  transition-property: background-color, border-color;
+}
+
+.paypm-button[data-variant="Primary"] {
+  background: var(--paypm-teal);
+  color: #fff;
+  border: 1px solid var(--paypm-teal);
+  border-radius: 8px;
+}
+
+.paypm-button--primary:not(:disabled),
+.paypm-button[data-variant="Primary"]:not(:disabled) {
+  box-shadow: 0 1px 2px rgb(23 61 58 / 18%);
+}
+
+.paypm-button:active:not(:disabled),
+.paypm-session button:active:not(:disabled) {
+  box-shadow: inset 0 2px 3px rgb(23 61 58 / 26%);
+}
+
+.paypm-button--secondary {
+  color: var(--theme-light-text-500, var(--paypm-ink));
+  border-color: color-mix(in srgb, var(--paypm-ink) 55%, var(--paypm-cream));
+  background: transparent;
+}
+
+.paypm-button--secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--paypm-teal) 8%, var(--paypm-cream));
+}
+
+.paypm-button--secondary:active:not(:disabled),
+.paypm-session button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--paypm-teal) 12%, var(--paypm-cream));
+}
+
+.paypm-button:disabled {
+  opacity: 1;
+  box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--paypm-ink) 55%, var(--paypm-cream));
+  background: color-mix(in srgb, var(--paypm-teal) 14%, var(--paypm-cream));
+  color: var(--paypm-ink);
+  cursor: not-allowed;
+}
+
+.paypm-auth-work form[aria-busy="true"] .paypm-button--primary:disabled:not(.bg-warn-light-500) {
+  background: var(--theme-light-primary-500, var(--paypm-teal));
+  color: var(--theme-light-primary-contrast-500, #fff);
+  cursor: progress;
+}
+
+.paypm-button svg[role="status"],
+.paypm-session svg[role="status"] {
+  color: inherit;
+  fill: currentColor;
+}
+
+.paypm-button svg[role="status"] path:first-child,
+.paypm-session svg[role="status"] path:first-child {
+  opacity: 0.28;
+}
+
+.paypm-button svg[role="status"] path:last-child,
+.paypm-session svg[role="status"] path:last-child {
+  fill: currentColor;
+}
+
+.paypm-auth-work .flex-row > .paypm-button--primary {
+  flex-grow: 1;
+}
+
+.paypm-auth-work .flex-row:has(> .paypm-button--primary) {
+  gap: 12px;
+}
+
+.paypm-identifier-submit {
+  margin-top: 20px;
+}
+
+.paypm-identifier-register {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid color-mix(in srgb, var(--paypm-ink) 20%, var(--paypm-cream));
+}
+
+.paypm-identifier-return {
+  margin-top: 12px;
+}
+
+.paypm-identifier-return .paypm-button {
+  border-color: color-mix(in srgb, var(--paypm-ink) 55%, var(--paypm-cream));
+  padding-inline: 16px;
+  font-weight: 500;
+}
+
+.paypm-auth-return-guidance {
+  margin-top: 20px;
+  color: color-mix(in srgb, var(--paypm-ink) 78%, var(--paypm-cream));
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.paypm-account {
+  min-height: 48px;
+  width: 100%;
+  margin-top: 16px;
+  background: color-mix(in srgb, var(--paypm-cream) 8%, var(--paypm-teal));
+  border-color: color-mix(in srgb, var(--paypm-cream) 50%, var(--paypm-teal));
+  color: var(--paypm-cream);
+}
+
+.paypm-account > span:first-of-type {
+  min-width: 0;
+  max-width: none;
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
+.paypm-account a {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  margin: 0;
+}
+
+.paypm-alert {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.paypm-session {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--paypm-ink) 55%, #fff);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.paypm-session-select {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  gap: 12px;
+  padding: 12px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  border-radius: 8px 0 0 8px;
+}
+
+.paypm-session-select > .overflow-hidden {
+  min-width: 0;
+  overflow: visible;
+}
+
+.paypm-session-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  flex: none;
+  border-left: 1px solid color-mix(in srgb, var(--paypm-ink) 55%, #fff);
+  border-radius: 0 8px 8px 0;
+}
+
+.paypm-session button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--paypm-teal) 8%, #ffffff);
+}
+
+.paypm-session button:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paypm-teal) 10%, #fff);
+  cursor: not-allowed;
+}
+
+.paypm-session button[aria-busy="true"] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 2px var(--paypm-teal);
+}
+
+.paypm-auth-work button:not(.paypm-button):not(.paypm-session-select):not(.paypm-session-remove) {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  height: auto;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--paypm-ink) 55%, var(--paypm-cream));
+  border-radius: 8px;
+  color: var(--paypm-ink);
+  background: var(--paypm-cream);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transition-property: background-color, border-color;
+}
+
+.paypm-auth-work button:not(.paypm-button):not(.paypm-session-select):not(.paypm-session-remove):active:not(:disabled) {
+  box-shadow: inset 0 2px 3px rgb(23 61 58 / 26%);
+}
+
+.paypm-auth-work button:not(.paypm-button):not(.paypm-session-select):not(.paypm-session-remove):disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paypm-teal) 14%, var(--paypm-cream));
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.paypm-auth-method {
+  display: block;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--paypm-ink) 55%, var(--paypm-cream));
+  border-radius: 8px;
+  background: var(--paypm-cream);
+  color: var(--paypm-ink);
+  transition-property: background-color, border-color;
+}
+
+.paypm-auth-method-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.paypm-auth-method-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.paypm-auth-method svg {
+  flex-shrink: 0;
+}
+
+.paypm-auth-method-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.paypm-auth-method[aria-disabled="true"] {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paypm-teal) 14%, var(--paypm-cream));
+  cursor: default;
+}
+
+.paypm-auth-method:hover:not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--paypm-teal) 8%, var(--paypm-cream));
+}
+
+.paypm-auth-method:active:not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--paypm-teal) 12%, var(--paypm-cream));
+  box-shadow: inset 0 2px 3px rgb(23 61 58 / 26%);
+}
+
+.paypm-mfa-skip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.paypm-auth-work button.paypm-mfa-skip[aria-busy="true"] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 2px var(--paypm-teal);
+}
+
+.paypm-mfa-skip svg[role="status"] {
+  color: inherit;
+  fill: currentColor;
+}
+
+.paypm-mfa-skip svg[role="status"] path:first-child {
+  opacity: 0.28;
+}
+
+.paypm-mfa-skip svg[role="status"] path:last-child {
+  fill: currentColor;
+}
+
+.paypm-auth-work button.paypm-session-clear {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  align-items: start;
+  gap: 12px;
+  text-align: start;
+}
+
+.paypm-session-clear > .overflow-hidden {
+  min-width: 0;
+  overflow: visible;
+}
+
+.paypm-session-clear > .pr-4 {
+  padding-right: 0;
+}
+
+.paypm-session-clear > .flex-grow {
+  display: none;
+}
+
+.paypm-session-clear > .relative {
+  grid-column: 2;
+}
+
+.paypm-auth-work button.paypm-session-clear[aria-busy="true"] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 2px var(--paypm-teal);
+}
+
+.paypm-session-clear svg[role="status"] {
+  color: inherit;
+  fill: currentColor;
+}
+
+.paypm-session-clear svg[role="status"] path:first-child {
+  opacity: 0.28;
+}
+
+.paypm-session-clear svg[role="status"] path:last-child {
+  fill: currentColor;
+}
+
+.paypm-session-clear .paypm-clear-label {
+  flex: none;
+  max-width: 100%;
+}
+
+.paypm-session-clear > svg[role="status"] {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.paypm-auth-language {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  z-index: 1;
+}
+
+.paypm-language {
+  position: relative;
+  color: var(--paypm-cream);
+}
+
+.paypm-language select {
+  width: auto;
+  min-width: 124px;
+  max-width: 100%;
+  min-height: 44px;
+  appearance: none;
+  padding: 8px 28px 8px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--paypm-cream) 80%, var(--paypm-teal));
+  background: color-mix(in srgb, var(--paypm-cream) 8%, var(--paypm-teal));
+  font-size: 14px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.paypm-language select:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paypm-cream) 20%, var(--paypm-teal));
+  cursor: not-allowed;
+}
+
+.paypm-language select:active:not(:disabled) {
+  box-shadow: inset 0 2px 3px rgb(23 61 58 / 26%);
+}
+
+.paypm-language[aria-busy="true"] select {
+  cursor: progress;
+  box-shadow: inset 0 0 0 2px var(--paypm-cream);
+}
+
+.paypm-language select option {
+  background: var(--paypm-cream);
+  color: var(--paypm-ink);
+}
+
+.paypm-language-chevron {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 14px;
+  right: 8px;
+  pointer-events: none;
+}
+
+.paypm-language-error {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: min(280px, 80vw);
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #9b2c2c;
+  border-radius: 8px;
+  background: var(--paypm-cream);
+  color: #9b2c2c;
+  font-size: 14px;
+}
+
+.paypm-auth-background .paypm-auth-frame {
+  position: relative;
+}
+
+.paypm-auth-background button[data-variant="Primary"] {
+  display: inline-flex;
+  margin-top: 20px;
+  border-radius: 8px;
+  background: var(--paypm-teal);
+  color: var(--paypm-cream);
+}
+
+.paypm-language-fallback {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+}
+
+.paypm-language-fallback label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.paypm-language-fallback select {
+  min-height: 44px;
+  max-width: 124px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--paypm-teal);
+  color: var(--paypm-cream);
+}
+
+@media (max-width: 560px) {
+  .paypm-auth-page,
+  .paypm-auth-background {
+    padding: 0;
+  }
+
+  .paypm-auth-frame {
+    min-height: 100svh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .paypm-auth-arrival {
+    padding-top: 112px;
+    padding-bottom: 32px;
+    padding-inline: 20px;
+  }
+
+  .paypm-auth-frame h1,
+  .paypm-auth-frame .ztdl-h1 {
+    font-size: 38px;
+  }
+
+  .paypm-auth-work {
+    padding: 36px 20px 24px;
+  }
+
+  .paypm-auth-language {
+    top: 48px;
+    right: 20px;
+  }
+
+  .paypm-language-fallback {
+    top: 48px;
+    right: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .form-checkbox:checked {

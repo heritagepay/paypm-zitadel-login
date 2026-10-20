@@ -1,7 +1,22 @@
 {
   "common": {
     "back": "Retour",
-    "title": "Connexion avec Zitadel"
+    "title": "Connexion · PayPM"
+  },
+  "paypmAuth": {
+    "language": "Langue",
+    "changeAccount": "Changer de compte",
+    "sessionError": "Cette action sur le compte n’a pas pu être effectuée. Réessayez.",
+    "removeAccount": "Retirer ce compte mémorisé",
+    "expires": "Expire {time}",
+    "languageError": "La langue n’a pas pu être modifiée. Réessayez.",
+    "unavailableTitle": "Connexion interrompue",
+    "unavailableDescription": "Cette étape n’a pas pu être chargée. Réessayez pour poursuivre la connexion.",
+    "tryAgain": "Réessayer",
+    "copySetupLink": "Copier le lien de configuration",
+    "setupLinkCopied": "Lien de configuration copié",
+    "setupLinkCopyError": "Le lien de configuration n’a pas pu être copié. Réessayez.",
+    "returnToApplication": "Vous retrouverez votre application après connexion."
   },
   "accounts": {
     "title": "Comptes",
@@ -23,12 +38,12 @@
     }
   },
   "loginname": {
-    "title": "Bienvenue!",
-    "description": "Entrez vos données de connexion.",
-    "register": "Enregistrer un nouveau compte",
+    "title": "Bienvenue",
+    "description": "Connectez-vous avec votre compte PayPM.",
+    "register": "Créer un compte",
     "submit": "Continuer",
     "labels": {
-      "loginname": "Identifiant",
+      "loginname": "E-mail, téléphone ou identifiant",
       "username": "Nom d'utilisateur",
       "usernameOrPhoneNumber": "Nom d'utilisateur ou numéro de téléphone",
       "usernameOrEmail": "Nom d'utilisateur ou e-mail"
@@ -209,7 +224,9 @@
     "set": {
       "title": "Configurer l'authentification à deux facteurs",
       "description": "Choisissez l'un des seconds facteurs suivants.",
-      "skip": "Ignorer"
+      "skip": "Ignorer",
+      "pending": "Action en cours…",
+      "error": "Cette étape n’a pas pu être ignorée. Réessayez."
     }
   },
   "otp": {
@@ -286,7 +303,7 @@
       "description": "Fournissez un e-mail, un prénom et un nom pour vous inscrire."
     },
     "title": "S'inscrire",
-    "description": "Créez votre compte Zitadel.",
+    "description": "Créez votre compte PayPM.",
     "noMethodAvailableWarning": "Aucune méthode d'authentification disponible. Veuillez contacter votre administrateur.",
     "selectMethod": "Sélectionnez la méthode que vous souhaitez utiliser pour vous authentifier",
     "agreeTo": "Pour vous inscrire, vous devez accepter les conditions d'utilisation",
@@ -355,7 +372,7 @@
     "setupAuthenticator": "Configurer l'authentificateur",
     "verify": {
       "title": "Vérifier l'utilisateur",
-      "description": "Entrez le code fourni dans l'e-mail de vérification.",
+      "description": "Saisissez le code reçu dans l’e-mail de vérification.",
       "noCodeReceived": "Vous n'avez pas reçu de code ?",
       "resendCode": "Renvoyer le code",
       "codeSent": "Un code vient d'être envoyé à votre adresse e-mail.",
@@ -386,7 +403,16 @@
     "description": "Sélectionnez la méthode que vous souhaitez utiliser pour vous authentifier",
     "noMethodsAvailable": "Aucune méthode d'authentification disponible",
     "allSetup": "Vous avez déjà configuré un authentificateur !",
-    "linkWithIDP": "ou lier avec un fournisseur d'identité"
+    "linkWithIDP": "ou lier avec un fournisseur d'identité",
+    "methods": {
+      "totp": "Application d’authentification",
+      "u2f": "Second facteur universel (U2F)",
+      "email": "Code par e-mail",
+      "sms": "Code par SMS",
+      "passkeys": "Clés d’accès",
+      "password": "Mot de passe",
+      "configured": "Déjà configuré"
+    }
   },
   "device": {
     "usercode": {
@@ -439,7 +465,8 @@
     "lostAccess": "Vous n’avez plus accès à cette adresse ?",
     "recovery": "Contactez votre administrateur habilité pour une récupération examinée. Un changement d’adresse ne donne aucun accès supplémentaire.",
     "invitedOnly": "L’accès professionnel nécessite une invitation approuvée. Certaines applications demandent aussi votre clé d’accès.",
-    "unavailable": "Cette étape n’a pas abouti. Vérifiez vos informations ou réessayez. Si vous avez besoin d’aide, contactez votre administrateur."
+    "unavailable": "Cette étape n’a pas abouti. Vérifiez vos informations ou réessayez. Si vous avez besoin d’aide, contactez votre administrateur.",
+    "rateLimited": "Vous avez demandé plusieurs codes. Par sécurité, patientez {minutes} min {seconds} s avant d’en demander un nouveau."
   },
   "operationsAction": {
     "title": "Vérifier cette action des Opérations",
@@ -465,9 +492,9 @@
       "deploymentGrantApprove": "Approuver un accès en lecture à ce déploiement",
       "kycGrantReview": "Examiner un accès à la revue et aux décisions KYC pour ce déploiement",
       "kycGrantApprove": "Approuver un accès à la revue et aux décisions KYC pour ce déploiement",
+      "kycGrantRevoke": "Révoquer un accès à la revue et aux décisions KYC pour ce déploiement",
       "kycCaseReview": "Examiner ce dossier KYC",
       "kycCaseDecide": "Confirmer cette décision KYC",
-      "kycGrantRevoke": "Révoquer un accès à la revue et aux décisions KYC pour ce déploiement",
       "deploymentGrantRevoke": "Révoquer un accès en lecture à ce déploiement"
     }
   },
@@ -490,13 +517,13 @@
     },
     "team": "Accès équipe",
     "progressLabel": "Progression de l’inscription",
-    "stepEmail": "Email",
+    "stepEmail": "E-mail",
     "stepSession": "Code de connexion",
     "stepAccess": "Accès",
-    "profileTitle": "Vérifiez votre email.",
+    "profileTitle": "Vérifiez votre e-mail.",
     "profileBody": "Confirmez que cette adresse invitée vous appartient. Vos accès resteront soumis à validation.",
-    "profileCodeLabel": "Code de vérification de l’email",
-    "profileHelper": "6 lettres majuscules ou chiffres. Collez le code reçu dans votre email de vérification.",
+    "profileCodeLabel": "Code de vérification de l’e-mail",
+    "profileHelper": "6 lettres majuscules ou chiffres. Collez le code reçu dans votre e-mail de vérification.",
     "profileRequestAccepted": "Demande de code acceptée.",
     "profileRequestUnknown": "L’envoi reste à confirmer. Si vous avez reçu un code, saisissez-le ci-dessous.",
     "profileReplace": "Demander un nouveau code",
@@ -504,18 +531,18 @@
     "profileReplacementCountdown": "Nouveau code dans {remaining}",
     "profileRequestExpired": "Cette demande a expiré. Retournez à votre invitation.",
     "profileRequesting": "Demande en cours…",
-    "profileSubmit": "Vérifier mon email",
-    "destination": "Adresse email invitée",
-    "verifiedEmail": "Email vérifié",
+    "profileSubmit": "Vérifier mon e-mail",
+    "destination": "Adresse e-mail invitée",
+    "verifiedEmail": "E-mail vérifié",
     "sessionTitle": "Saisissez votre code de connexion.",
     "sessionBody": "Utilisez le nouveau code envoyé à votre adresse vérifiée pour poursuivre cette demande.",
     "sessionCodeLabel": "Code de connexion",
-    "sessionHelper": "8 chiffres. Collez le code du dernier email de connexion.",
+    "sessionHelper": "8 chiffres. Collez le code du dernier e-mail de connexion.",
     "sessionSubmit": "Vérifier le code",
     "readyTitle": "Complétez votre invitation.",
-    "readyBody": "Vérifiez d’abord votre adresse email invitée. Puis confirmez cette demande avec un nouveau code de connexion.",
+    "readyBody": "Vérifiez d’abord votre adresse e-mail invitée. Puis confirmez cette demande avec un nouveau code de connexion.",
     "start": "Continuer",
-    "profileVerifiedTitle": "Votre email est vérifié.",
+    "profileVerifiedTitle": "Votre e-mail est vérifié.",
     "profileVerifiedBody": "Demandez un nouveau code de connexion pour cette inscription. Aucun accès n’a encore été accordé.",
     "sendSessionCode": "Recevoir le code de connexion",
     "requestTitle": "Revenez à votre invitation.",
@@ -530,7 +557,7 @@
     "cancelledBody": "Cette inscription a été annulée. Revenez à votre invitation pour poursuivre avec une nouvelle demande.",
     "completeTitle": "Votre profil est vérifié.",
     "completeBody": "Votre inscription est terminée. Vos accès restent en attente.",
-    "emailProof": "Adresse email vérifiée",
+    "emailProof": "Adresse e-mail vérifiée",
     "sessionProof": "Code de connexion vérifié",
     "accessPending": "Accès en attente",
     "accessBody": "Vos accès aux applications restent soumis à validation. Cette page ne vous attribue aucun rôle et ne vous connecte pas.",

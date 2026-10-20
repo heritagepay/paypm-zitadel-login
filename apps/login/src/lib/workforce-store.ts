@@ -78,7 +78,11 @@ export interface WorkforceAttempt {
   completed_at: Date | null;
 }
 export class WorkforceStoreError extends Error {
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    /** Set only for throttled sends: seconds until the shared contact quota admits another code. */
+    readonly retryAfterSeconds?: number,
+  ) {
     super(code);
   }
 }
@@ -123,12 +127,18 @@ export class WorkforceStore {
     return this.index("paypm-workforce-email-quota-v1", issuer + ":" + contact.trim().toLowerCase());
   }
   async assertEmailQuota(tx: TransactionSql, contactHash: string) {
-    const [quota] = await tx<{ count: number; recent: boolean }[]>`
-      SELECT count(*)::int AS count,coalesce(max(created_at)>clock_timestamp()-interval '60 seconds',false) AS recent
+    const [quota] = await tx<{ count: number; recent: boolean; gap_wait: number; window_wait: number }[]>`
+      SELECT count(*)::int AS count,coalesce(max(created_at)>clock_timestamp()-interval '60 seconds',false) AS recent,
+        coalesce(ceil(extract(epoch FROM max(created_at)+interval '60 seconds'-clock_timestamp())),0)::int AS gap_wait,
+        coalesce(ceil(extract(epoch FROM (array_agg(created_at ORDER BY created_at DESC))[3]+interval '10 minutes'-clock_timestamp())),0)::int AS window_wait
       FROM (SELECT created_at FROM login_workforce_challenges WHERE contact_hash=${contactHash}
         UNION ALL SELECT created_at FROM login_reviewed_workforce_profile_deliveries WHERE contact_hash=${contactHash}) sends
       WHERE created_at>clock_timestamp()-interval '10 minutes'`;
-    if (quota.count >= 3 || quota.recent) throw new WorkforceStoreError("workforce_delivery_rate_limited");
+    if (quota.count >= 3 || quota.recent)
+      throw new WorkforceStoreError(
+        "workforce_delivery_rate_limited",
+        Math.max(quota.recent ? quota.gap_wait : 0, quota.count >= 3 ? quota.window_wait : 0, 1),
+      );
   }
   async reserve(
     input: WorkforceChallengeBinding,

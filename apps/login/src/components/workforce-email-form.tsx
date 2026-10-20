@@ -11,7 +11,7 @@ import type { BrandingSettings } from "@zitadel/proto/zitadel/settings/v2/brandi
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Alert } from "./alert";
+import { Alert, AlertType } from "./alert";
 import { Button, ButtonVariants } from "./button";
 import { DynamicTheme } from "./dynamic-theme";
 import { TextInput } from "./input";
@@ -24,6 +24,15 @@ type Flow = {
   resendAt: string;
   authenticationClass: "workforce_limited";
 };
+/** Throttled sends carry a wait time; the form turns it into a countdown instead of a failure. */
+function retryAfter(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const { error, retryAfterSeconds } = value as { error?: unknown; retryAfterSeconds?: unknown };
+  return error === "rate_limited" && typeof retryAfterSeconds === "number" && retryAfterSeconds > 0
+    ? Math.min(retryAfterSeconds, 600)
+    : undefined;
+}
+
 function admittedFlow(value: unknown): value is Flow {
   if (!value || typeof value !== "object") return false;
   const flow = value as Flow;
@@ -48,6 +57,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
     [busy, setBusy] = useState(false),
     [cancelling, setCancelling] = useState(false),
     [error, setError] = useState(false),
+    [waitUntil, setWaitUntil] = useState<number>(),
     [now, setNow] = useState(0);
   const epoch = useRef(0),
     emailInput = useRef<HTMLInputElement>(null),
@@ -73,9 +83,10 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
   const seconds = flow ? Math.max(0, Math.ceil((Date.parse(flow.resendAt) - now) / 1000)) : 0;
   const expired = !!flow && now >= Date.parse(flow.expiresAt);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const waitSeconds = waitUntil ? Math.max(0, Math.ceil((waitUntil - now) / 1000)) : 0;
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid)) return;
+    if (busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid || waitSeconds > 0)) return;
     const current = epoch.current;
     setBusy(true);
     setError(false);
@@ -90,7 +101,14 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
           operationKey: issuance.current.operationKey,
         });
         if (current !== epoch.current) return;
+        const wait = retryAfter(result);
+        if (wait) {
+          setWaitUntil(Date.now() + wait * 1000);
+          setNow(Date.now());
+          return;
+        }
         if (!admittedFlow(result)) throw new Error("unavailable");
+        setWaitUntil(undefined);
         setFlow(result);
         setCode("");
         verification.current = undefined;
@@ -115,7 +133,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
     }
   }
   async function sendAgain() {
-    if (!flow || busy || cancelling || seconds > 0) return;
+    if (!flow || busy || cancelling || seconds > 0 || waitSeconds > 0) return;
     const current = epoch.current;
     resend.current ??= crypto.randomUUID();
     setBusy(true);
@@ -123,7 +141,14 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
     try {
       const result = await resendWorkforceEmailOtp({ sessionId: flow.sessionId, requestId, operationKey: resend.current });
       if (current !== epoch.current) return;
+      const wait = retryAfter(result);
+      if (wait) {
+        setWaitUntil(Date.now() + wait * 1000);
+        setNow(Date.now());
+        return;
+      }
       if (!admittedFlow(result)) throw new Error("unavailable");
+      setWaitUntil(undefined);
       setFlow(result);
       setCode("");
       verification.current = undefined;
@@ -209,7 +234,14 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
             }}
           />
         )}
-        {error && (
+        {waitSeconds > 0 && (
+          <div className="py-4" role="status" aria-live="polite">
+            <Alert type={AlertType.INFO}>
+              {t("rateLimited", { minutes: Math.floor(waitSeconds / 60), seconds: String(waitSeconds % 60).padStart(2, "0") })}
+            </Alert>
+          </div>
+        )}
+        {error && waitSeconds === 0 && (
           <div className="py-4">
             <Alert>{t("unavailable")}</Alert>
           </div>
@@ -219,7 +251,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
             type="submit"
             className="w-full"
             variant={ButtonVariants.Primary}
-            disabled={busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid)}
+            disabled={busy || cancelling || (flow ? expired || !/^\d{8}$/.test(code) : !emailValid || waitSeconds > 0)}
           >
             {busy && <Spinner className="mr-2 h-5 w-5" />}
             {t(flow ? "verify" : "send")}
@@ -231,7 +263,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
               <Button
                 className="w-full"
                 variant={ButtonVariants.Secondary}
-                disabled={busy || cancelling || expired || seconds > 0}
+                disabled={busy || cancelling || expired || seconds > 0 || waitSeconds > 0}
                 onClick={sendAgain}
               >
                 {seconds > 0 ? t("resendAfter", { seconds }) : t("resend")}
