@@ -22,16 +22,16 @@
     "title": "Comptes",
     "description": "Choisissez le compte que vous souhaitez utiliser.",
     "addAnother": "Ajouter un nouveau compte",
-    "noResults": "Pas de compte trouvé",
+    "noResults": "Aucun compte trouvé",
     "verified": "vérifié",
     "expired": "expiré"
   },
   "logout": {
     "title": "Déconnexion",
-    "description": "Cliquez sur un compte pour terminer la session",
-    "noResults": "Pas de compte trouvé",
+    "description": "Choisissez un compte pour terminer sa session",
+    "noResults": "Aucun compte trouvé",
     "clear": "Fin de session",
-    "verifiedAt": "Dernière connexion: {time}",
+    "verifiedAt": "Dernière connexion : {time}",
     "success": {
       "title": "Déconnexion réussie",
       "description": "Vous vous êtes déconnecté avec succès."
@@ -44,28 +44,28 @@
     "submit": "Continuer",
     "labels": {
       "loginname": "E-mail, téléphone ou identifiant",
-      "username": "Nom d'utilisateur",
-      "usernameOrPhoneNumber": "Nom d'utilisateur ou numéro de téléphone",
-      "usernameOrEmail": "Nom d'utilisateur ou e-mail"
+      "username": "Nom d’utilisateur",
+      "usernameOrPhoneNumber": "Nom d’utilisateur ou numéro de téléphone",
+      "usernameOrEmail": "Nom d’utilisateur ou e-mail"
     },
     "required": {
       "loginName": "Ce champ est requis"
     },
     "errors": {
-      "internalError": "Une erreur interne s'est produite",
-      "couldNotGetLoginSettings": "Impossible d'obtenir les paramètres de connexion",
-      "couldNotSearchUsers": "Impossible de rechercher des utilisateurs",
-      "couldNotGetDomain": "Impossible d'obtenir le domaine",
-      "couldNotGetHost": "Impossible d'obtenir l'hôte",
-      "couldNotStartIDPFlow": "Impossible de démarrer le flux IDP",
-      "moreThanOneUserFound": "Plus d'un utilisateur trouvé. Fournissez un identifiant unique.",
-      "userNotFound": "Utilisateur non trouvé dans le système",
-      "couldNotCreateSession": "Impossible de créer une session pour l'utilisateur",
-      "initialUserNotSupported": "Utilisateur initial non pris en charge",
-      "localAuthenticationNotAllowed": "L'authentification locale n'est pas autorisée ! Contactez votre administrateur pour plus d'informations.",
-      "passkeysNotAllowed": "Les clés d'accès ne sont pas autorisées ! Contactez votre administrateur pour plus d'informations.",
-      "couldNotFindIdentityProvider": "Impossible de trouver le fournisseur d'identité.",
-      "userNotActive": "L'utilisateur n'est pas actif. Contactez votre administrateur pour plus d'informations."
+      "internalError": "Une erreur s’est produite. Réessayez.",
+      "couldNotGetLoginSettings": "Les paramètres de connexion n’ont pas pu être chargés. Réessayez.",
+      "couldNotSearchUsers": "La recherche de votre compte a échoué. Réessayez.",
+      "couldNotGetDomain": "Le domaine de connexion n’a pas pu être déterminé. Réessayez.",
+      "couldNotGetHost": "L’adresse du service n’a pas pu être déterminée. Réessayez.",
+      "couldNotStartIDPFlow": "La connexion via le fournisseur externe n’a pas pu démarrer. Réessayez.",
+      "moreThanOneUserFound": "Plusieurs comptes correspondent à cet identifiant. Utilisez votre adresse e-mail complète.",
+      "userNotFound": "Aucun compte ne correspond à cet identifiant.",
+      "couldNotCreateSession": "La session n’a pas pu être ouverte. Réessayez.",
+      "initialUserNotSupported": "Ce compte doit d’abord être activé. Contactez votre administrateur.",
+      "localAuthenticationNotAllowed": "La connexion par identifiant n’est pas autorisée ici. Contactez votre administrateur.",
+      "passkeysNotAllowed": "Les clés d’accès ne sont pas autorisées ici. Contactez votre administrateur.",
+      "couldNotFindIdentityProvider": "Le fournisseur d’identité est introuvable. Contactez votre administrateur.",
+      "userNotActive": "Ce compte n’est pas actif. Contactez votre administrateur."
     }
   },
   "zitadel": {
@@ -218,12 +218,12 @@
   "mfa": {
     "verify": {
       "title": "Vérifiez votre identité",
-      "description": "Choisissez l'un des facteurs suivants.",
+      "description": "Choisissez l’un des facteurs suivants.",
       "noResults": "Aucun second facteur disponible à configurer."
     },
     "set": {
-      "title": "Configurer l'authentification à deux facteurs",
-      "description": "Choisissez l'un des seconds facteurs suivants.",
+      "title": "Configurer la vérification en deux étapes",
+      "description": "Choisissez l’un des seconds facteurs suivants.",
       "skip": "Ignorer",
       "pending": "Action en cours…",
       "error": "Cette étape n’a pas pu être ignorée. Réessayez."
@@ -231,11 +231,11 @@
   },
   "otp": {
     "verify": {
-      "title": "Vérification à deux facteurs",
-      "totpDescription": "Entrez le code de votre application d'authentification.",
-      "smsDescription": "Entrez le code reçu par SMS.",
-      "emailDescription": "Entrez le code reçu par e-mail.",
-      "noCodeReceived": "Vous n'avez pas reçu de code ?",
+      "title": "Vérification en deux étapes",
+      "totpDescription": "Saisissez le code de votre application d’authentification.",
+      "smsDescription": "Saisissez le code reçu par SMS.",
+      "emailDescription": "Saisissez le code reçu par e-mail.",
+      "noCodeReceived": "Vous n’avez pas reçu de code ?",
       "resendCode": "Renvoyer le code",
       "submit": "Continuer",
       "labels": {
@@ -243,14 +243,18 @@
       },
       "required": {
         "code": "Ce champ est requis"
+      },
+      "errors": {
+        "couldNotRequestCode": "Le code n’a pas pu être envoyé. Réessayez.",
+        "couldNotVerifyCode": "Le code n’a pas pu être vérifié. Réessayez."
       }
     },
     "set": {
-      "title": "Configurer l'authentification à deux facteurs",
-      "totpDescription": "Scannez le QR code avec votre application d'authentification.",
+      "title": "Configurer la vérification en deux étapes",
+      "totpDescription": "Scannez le QR code avec votre application d’authentification.",
       "smsDescription": "Entrez votre numéro de téléphone pour recevoir un code par SMS.",
       "emailDescription": "Entrez votre adresse e-mail pour recevoir un code par e-mail.",
-      "totpRegisterDescription": "Scannez le QR code ou saisissez l'URL manuellement.",
+      "totpRegisterDescription": "Scannez le QR code ou saisissez l’URL manuellement.",
       "submit": "Continuer",
       "labels": {
         "code": "Code"
@@ -262,17 +266,30 @@
   },
   "passkey": {
     "verify": {
-      "title": "S'authentifier avec une clé d'accès",
-      "description": "Votre appareil vous demandera votre empreinte digitale, votre visage ou votre verrouillage d'écran",
+      "title": "S’authentifier avec une clé d’accès",
+      "description": "Votre appareil vous demandera votre empreinte digitale, votre visage ou votre code de verrouillage.",
       "usePassword": "Utiliser un mot de passe",
-      "submit": "Continuer"
+      "submit": "Continuer",
+      "errors": {
+        "couldNotRequestChallenge": "Votre clé d’accès n’a pas pu être demandée. Réessayez.",
+        "couldNotVerifyPasskey": "Votre clé d’accès n’a pas pu être vérifiée. Réessayez.",
+        "noResponseReceived": "La vérification n’a pas abouti : aucune réponse reçue. Réessayez.",
+        "noRedirectProvided": "Votre clé d’accès a été vérifiée, mais la connexion n’a pas pu continuer. Réessayez.",
+        "couldNotRetrievePasskey": "Votre clé d’accès n’a pas pu être lue. Réessayez.",
+        "verificationCancelled": "La vérification par clé d’accès a été annulée. Vous pouvez réessayer.",
+        "verificationFailed": "La vérification par clé d’accès a échoué. Réessayez.",
+        "couldNotFindSession": "Votre session est introuvable. Reconnectez-vous.",
+        "couldNotUpdateSession": "Votre session n’a pas pu être mise à jour. Réessayez.",
+        "userNotFound": "Aucun compte ne correspond à cette clé d’accès.",
+        "couldNotDetermineRedirect": "Votre clé d’accès a été vérifiée, mais la page suivante n’a pas pu être déterminée. Réessayez."
+      }
     },
     "set": {
       "title": "Configurer une clé d'accès",
-      "description": "Votre appareil vous demandera votre empreinte digitale, votre visage ou votre verrouillage d'écran",
+      "description": "Votre appareil vous demandera votre empreinte digitale, votre visage ou votre code de verrouillage.",
       "info": {
-        "description": "Une clé d'accès est une méthode d'authentification sur un appareil, comme votre empreinte digitale, Apple FaceID ou équivalent.",
-        "link": "Authentification par clé d'accès"
+        "description": "Une clé d’accès est une méthode d’authentification liée à votre appareil, comme votre empreinte digitale ou Face ID.",
+        "link": "Authentification par clé d’accès"
       },
       "skip": "Ignorer",
       "submit": "Continuer"
@@ -441,11 +458,11 @@
     }
   },
   "error": {
-    "noUserCode": "Aucun code utilisateur fourni !",
-    "noDeviceRequest": "Aucune demande d'appareil trouvée.",
-    "unknownContext": "Impossible d'obtenir le contexte de l'utilisateur. Assurez-vous d'abord de saisir le nom d'utilisateur ou de fournir un loginName comme paramètre de recherche.",
+    "noUserCode": "Aucun code d’appareil n’a été fourni.",
+    "noDeviceRequest": "Aucune demande d’appareil trouvée.",
+    "unknownContext": "Nous ne savons pas quel compte vous utilisez. Revenez à l’étape précédente et saisissez votre identifiant.",
     "sessionExpired": "Votre session actuelle a expiré. Veuillez vous reconnecter.",
-    "failedLoading": "Échec du chargement des données. Veuillez réessayer.",
+    "failedLoading": "Les données n’ont pas pu être chargées. Réessayez.",
     "tryagain": "Réessayer"
   },
   "workforceEmail": {
@@ -454,19 +471,20 @@
     "emailLabel": "Adresse e-mail professionnelle",
     "send": "Envoyer le code",
     "codeTitle": "Consultez votre messagerie",
-    "codeDescription": "Saisissez le code à huit chiffres envoyé à votre adresse e-mail.",
+    "codeDescription": "Saisissez le code à huit chiffres que nous venons d’envoyer.",
     "codeLabel": "Code de connexion",
     "verify": "Vérifier et continuer",
     "expires": "Le code expire dans {minutes} min.",
-    "expired": "Ce code a expiré. Changez d’adresse e-mail pour recommencer.",
-    "resendAfter": "Renvoyer dans {seconds} s",
-    "resend": "Envoyer un nouveau code",
-    "changeEmail": "Changer d’adresse e-mail ou annuler",
-    "lostAccess": "Vous n’avez plus accès à cette adresse ?",
-    "recovery": "Contactez votre administrateur habilité pour une récupération examinée. Un changement d’adresse ne donne aucun accès supplémentaire.",
+    "expired": "Ce code a expiré. Changez d’adresse e-mail ou saisissez-la de nouveau pour recevoir un nouveau code.",
+    "resendAfter": "Nouveau code possible dans {seconds} s",
+    "resend": "Renvoyer le code",
+    "changeEmail": "Changer d’adresse e-mail",
+    "lostAccess": "Vous n’avez plus accès à cette adresse ?",
+    "recovery": "Contactez l’administrateur de votre équipe : il peut lancer une procédure de récupération vérifiée. Un changement d’adresse ne donne aucun accès supplémentaire.",
     "invitedOnly": "L’accès professionnel nécessite une invitation approuvée. Certaines applications demandent aussi votre clé d’accès.",
     "unavailable": "Cette étape n’a pas abouti. Vérifiez vos informations ou réessayez. Si vous avez besoin d’aide, contactez votre administrateur.",
-    "rateLimited": "Vous avez demandé plusieurs codes. Par sécurité, patientez {minutes} min {seconds} s avant d’en demander un nouveau."
+    "rateLimited": "Vous avez demandé plusieurs codes. Par sécurité, patientez {minutes, plural, =0 {{seconds} s} other {# min {seconds} s}} avant d’en demander un nouveau.",
+    "sentTo": "Code envoyé à {email}"
   },
   "operationsAction": {
     "title": "Vérifier cette action des Opérations",
