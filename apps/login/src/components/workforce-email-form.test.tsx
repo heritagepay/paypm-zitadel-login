@@ -120,13 +120,13 @@ describe("workforce email-code experience", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.send }));
     });
-    expect(screen.getByRole("button", { name: "Resend in 60s" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: en.workforceEmail.resendAfter.replace("{seconds}", "60") })).toBeDisabled();
     await act(() => vi.advanceTimersByTime(61000));
     vi.mocked(resendWorkforceEmailOtp).mockRejectedValueOnce(new Error("lost response")).mockResolvedValueOnce(flow());
     await act(async () => fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.resend })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.resend })));
     expect(vi.mocked(resendWorkforceEmailOtp).mock.calls[0][0]).toEqual(vi.mocked(resendWorkforceEmailOtp).mock.calls[1][0]);
-    expect(screen.getByRole("button", { name: "Resend in 60s" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: en.workforceEmail.resendAfter.replace("{seconds}", "60") })).toBeDisabled();
   });
   it("cancels on the server before returning and ignores a late successful verification", async () => {
     mount();
@@ -159,7 +159,8 @@ describe("workforce email-code experience", () => {
     await act(() => vi.advanceTimersByTime(301000));
     expect(screen.getByText(en.workforceEmail.expired)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: en.workforceEmail.verify })).toBeDisabled();
-    expect(screen.getByRole("button", { name: en.workforceEmail.resend })).toBeDisabled();
+    // An expired code cannot be resent, so the resend control leaves the page instead of sitting disabled.
+    expect(screen.queryByRole("button", { name: en.workforceEmail.resend })).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: en.workforceEmail.changeEmail })));
     expect(screen.getByLabelText(new RegExp(en.workforceEmail.emailLabel))).toHaveFocus();
     expect(verifyWorkforceEmailOtp).not.toHaveBeenCalled();

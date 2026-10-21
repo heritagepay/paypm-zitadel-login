@@ -190,9 +190,10 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
       <form className="paypm-identifier-form w-full" onSubmit={submit} aria-busy={busy || cancelling}>
         {flow ? (
           <>
-            <p className="ztdl-p mb-4">{email.trim()}</p>
+            <p className="paypm-sent-to">{t("sentTo", { email: email.trim() })}</p>
             <TextInput
               ref={codeInput}
+              className="paypm-code-input"
               label={t("codeLabel")}
               value={code}
               type="text"
@@ -237,7 +238,7 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
         {waitSeconds > 0 && (
           <div className="py-4" role="status" aria-live="polite">
             <Alert type={AlertType.INFO}>
-              {t("rateLimited", { minutes: Math.floor(waitSeconds / 60), seconds: String(waitSeconds % 60).padStart(2, "0") })}
+              {t("rateLimited", { minutes: Math.floor(waitSeconds / 60), seconds: waitSeconds % 60 })}
             </Alert>
           </div>
         )}
@@ -259,18 +260,19 @@ export function WorkforceEmailForm({ requestId, branding }: { requestId: string;
         </div>
         {flow && (
           <>
-            <div className="paypm-identifier-register">
-              <Button
-                className="w-full"
-                variant={ButtonVariants.Secondary}
-                disabled={busy || cancelling || expired || seconds > 0 || waitSeconds > 0}
-                onClick={sendAgain}
-              >
-                {seconds > 0 ? t("resendAfter", { seconds }) : t("resend")}
-              </Button>
-            </div>
-            <div className="paypm-identifier-return">
-              <Button className="w-full" variant={ButtonVariants.Secondary} disabled={cancelling} onClick={cancel}>
+            {/* One primary action; resend and change stay quiet. An expired code cannot be resent, so the control disappears with its countdown. */}
+            <div className="paypm-code-actions">
+              {!expired && (
+                <Button
+                  className="paypm-button--quiet"
+                  variant={ButtonVariants.Secondary}
+                  disabled={busy || cancelling || seconds > 0 || waitSeconds > 0}
+                  onClick={sendAgain}
+                >
+                  {seconds > 0 ? t("resendAfter", { seconds }) : t("resend")}
+                </Button>
+              )}
+              <Button className="paypm-button--quiet" variant={ButtonVariants.Secondary} disabled={cancelling} onClick={cancel}>
                 {t("changeEmail")}
               </Button>
             </div>

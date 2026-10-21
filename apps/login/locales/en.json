@@ -28,7 +28,7 @@
   },
   "logout": {
     "title": "Logout",
-    "description": "Click an account to end the session",
+    "description": "Choose an account to end its session",
     "noResults": "No accounts found",
     "clear": "End Session",
     "verifiedAt": "Last active: {time}",
@@ -52,20 +52,20 @@
       "loginName": "This field is required"
     },
     "errors": {
-      "internalError": "An internal error occurred",
-      "couldNotGetLoginSettings": "Could not get login settings",
-      "couldNotSearchUsers": "Could not search users",
-      "couldNotGetDomain": "Could not get domain",
-      "couldNotGetHost": "Could not get host",
-      "couldNotStartIDPFlow": "Could not start IDP flow",
-      "moreThanOneUserFound": "More than one user found. Provide a unique identifier.",
-      "userNotFound": "User not found in the system",
-      "couldNotCreateSession": "Could not create session for user",
-      "initialUserNotSupported": "Initial User not supported",
-      "localAuthenticationNotAllowed": "Local authentication is not allowed! Contact your administrator for more information.",
-      "passkeysNotAllowed": "Passkeys not allowed! Contact your administrator for more information.",
-      "couldNotFindIdentityProvider": "Could not find identity provider.",
-      "userNotActive": "User is not active. Contact your administrator for more information."
+      "internalError": "Something went wrong. Try again.",
+      "couldNotGetLoginSettings": "Sign-in settings could not be loaded. Try again.",
+      "couldNotSearchUsers": "Your account could not be looked up. Try again.",
+      "couldNotGetDomain": "The sign-in domain could not be determined. Try again.",
+      "couldNotGetHost": "The service address could not be determined. Try again.",
+      "couldNotStartIDPFlow": "Sign-in with the external provider could not start. Try again.",
+      "moreThanOneUserFound": "Several accounts match this identifier. Use your full email address.",
+      "userNotFound": "No account matches this identifier.",
+      "couldNotCreateSession": "Your session could not be started. Try again.",
+      "initialUserNotSupported": "This account must be activated first. Contact your administrator.",
+      "localAuthenticationNotAllowed": "Signing in with an identifier is not allowed here. Contact your administrator.",
+      "passkeysNotAllowed": "Passkeys are not allowed here. Contact your administrator.",
+      "couldNotFindIdentityProvider": "The identity provider could not be found. Contact your administrator.",
+      "userNotActive": "This account is not active. Contact your administrator."
     }
   },
   "zitadel": {
@@ -241,7 +241,7 @@
       "noResults": "No second factors available to setup."
     },
     "set": {
-      "title": "Set up 2-Factor",
+      "title": "Set up two-step verification",
       "description": "Choose one of the following second factors.",
       "skip": "Skip",
       "pending": "Skipping…",
@@ -250,7 +250,7 @@
   },
   "otp": {
     "verify": {
-      "title": "Verify 2-Factor",
+      "title": "Two-step verification",
       "totpDescription": "Enter the code from your authenticator app.",
       "smsDescription": "Enter the code you received via SMS.",
       "emailDescription": "Enter the code you received via email.",
@@ -262,10 +262,14 @@
       },
       "required": {
         "code": "This field is required"
+      },
+      "errors": {
+        "couldNotRequestCode": "The code could not be sent. Try again.",
+        "couldNotVerifyCode": "The code could not be verified. Try again."
       }
     },
     "set": {
-      "title": "Set up 2-Factor",
+      "title": "Set up two-step verification",
       "totpDescription": "Scan the QR code with your authenticator app.",
       "smsDescription": "Enter your phone number to receive a code via SMS.",
       "emailDescription": "Enter your email address to receive a code via email.",
@@ -282,29 +286,29 @@
   "passkey": {
     "verify": {
       "title": "Authenticate with a passkey",
-      "description": "Your device will ask for your fingerprint, face, or screen lock",
+      "description": "Your device will ask for your fingerprint, face or screen lock.",
       "usePassword": "Use password",
       "submit": "Continue",
       "errors": {
-        "couldNotRequestChallenge": "Could not request passkey challenge",
-        "couldNotVerifyPasskey": "Could not verify passkey",
-        "noResponseReceived": "Passkey verification failed - no response received",
-        "noRedirectProvided": "Passkey verification completed but no redirect was provided",
-        "couldNotRetrievePasskey": "An error occurred while retrieving passkey",
-        "verificationCancelled": "Passkey verification was cancelled",
-        "verificationFailed": "An error occurred during passkey verification",
-        "couldNotFindSession": "Could not find session",
-        "couldNotUpdateSession": "Could not update session",
-        "userNotFound": "User not found in the system",
-        "couldNotDetermineRedirect": "Could not determine redirect URL after passkey verification"
+        "couldNotRequestChallenge": "Your passkey could not be requested. Try again.",
+        "couldNotVerifyPasskey": "Your passkey could not be verified. Try again.",
+        "noResponseReceived": "Verification did not complete: no response was received. Try again.",
+        "noRedirectProvided": "Your passkey was verified, but sign-in could not continue. Try again.",
+        "couldNotRetrievePasskey": "Your passkey could not be read. Try again.",
+        "verificationCancelled": "Passkey verification was cancelled. You can try again.",
+        "verificationFailed": "Passkey verification failed. Try again.",
+        "couldNotFindSession": "Your session could not be found. Sign in again.",
+        "couldNotUpdateSession": "Your session could not be updated. Try again.",
+        "userNotFound": "No account matches this passkey.",
+        "couldNotDetermineRedirect": "Your passkey was verified, but the next page could not be determined. Try again."
       }
     },
     "set": {
       "title": "Setup a passkey",
-      "description": "Your device will ask for your fingerprint, face, or screen lock",
+      "description": "Your device will ask for your fingerprint, face or screen lock.",
       "info": {
-        "description": "A passkey is an authentication method on a device like your fingerprint, Apple FaceID or similar. ",
-        "link": "Passkey Authentication"
+        "description": "A passkey is a sign-in method tied to your device, such as your fingerprint or Face ID.",
+        "link": "Passkey authentication"
       },
       "skip": "Skip",
       "submit": "Continue"
@@ -476,13 +480,13 @@
     }
   },
   "error": {
-    "noUserCode": "No user code provided!",
+    "noUserCode": "No device code was provided.",
     "noDeviceRequest": "No device request found.",
-    "unknownContext": "Could not get the context of the user. Make sure to enter the username first or provide a loginName as searchParam.",
+    "unknownContext": "We could not tell which account you are using. Go back and enter your identifier.",
     "sessionExpired": "Your current session has expired. Please login again.",
     "failedLoading": "Failed to load data. Please try again.",
     "tryagain": "Try Again",
-    "couldNotContinueSession": "Could not continue with session - missing user information"
+    "couldNotContinueSession": "Sign-in could not continue: your account details are missing. Go back and try again."
   },
   "workforceEmail": {
     "title": "Sign in to your staff account",
@@ -490,19 +494,20 @@
     "emailLabel": "Work email",
     "send": "Send code",
     "codeTitle": "Check your email",
-    "codeDescription": "Enter the eight-digit code sent to your email address.",
+    "codeDescription": "Enter the eight-digit code we just sent you.",
     "codeLabel": "Sign-in code",
     "verify": "Verify and continue",
     "expires": "Code expires in {minutes} min.",
-    "expired": "This code has expired. Change email to start again.",
-    "resendAfter": "Resend in {seconds}s",
-    "resend": "Send a new code",
-    "changeEmail": "Change email or cancel",
+    "expired": "This code has expired. Change the email address, or enter it again to get a new code.",
+    "resendAfter": "New code available in {seconds} s",
+    "resend": "Resend code",
+    "changeEmail": "Change email address",
     "lostAccess": "No longer have access to this email?",
-    "recovery": "Contact your authorized staff administrator for reviewed recovery. Email changes do not grant additional access.",
+    "recovery": "Contact your team administrator, who can start a reviewed recovery. Changing the address grants no additional access.",
     "invitedOnly": "Staff access requires an approved invitation. Some applications also ask for your passkey.",
     "unavailable": "We could not complete this step. Check your details or retry. If you still need help, contact your staff administrator.",
-    "rateLimited": "You have requested several codes. For your security, wait {minutes} min {seconds} s before requesting a new one."
+    "rateLimited": "You have requested several codes. For your security, wait {minutes, plural, =0 {{seconds} s} other {# min {seconds} s}} before requesting a new one.",
+    "sentTo": "Code sent to {email}"
   },
   "operationsAction": {
     "title": "Verify this Operations action",

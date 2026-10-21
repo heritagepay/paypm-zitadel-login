@@ -328,6 +328,56 @@ body {
   font-weight: 500;
 }
 
+// Staff code step: where the code went, a large tabular code field, and quiet secondary actions.
+.paypm-sent-to {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--paypm-ink) 78%, var(--paypm-cream));
+  overflow-wrap: anywhere;
+}
+
+.paypm-input.paypm-code-input {
+  font-size: 24px;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+}
+
+.paypm-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 24px;
+  row-gap: 4px;
+  margin-top: 12px;
+}
+
+.paypm-button.paypm-button--quiet {
+  width: auto;
+  min-height: 44px;
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--paypm-teal);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.paypm-button.paypm-button--quiet:hover:not(:disabled),
+.paypm-button.paypm-button--quiet:active:not(:disabled) {
+  background: transparent;
+  color: var(--paypm-ink);
+  box-shadow: none;
+}
+
+.paypm-button.paypm-button--quiet:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--paypm-ink) 62%, var(--paypm-cream));
+  text-decoration: none;
+}
+
 .paypm-auth-return-guidance {
   margin-top: 20px;
   color: color-mix(in srgb, var(--paypm-ink) 78%, var(--paypm-cream));
