@@ -37,6 +37,13 @@ export function LoginPasskey({ loginName, sessionId, requestId, altPassword, org
 
   const initialized = useRef(false);
 
+  // Browser/WebAuthn exceptions are not sentences for people; keep the raw message in the console for support.
+  function passkeyFailure(error: unknown): string {
+    console.warn("passkey_verification_failed", error);
+    const name = error instanceof Error ? error.name : "";
+    return t(["NotAllowedError", "AbortError"].includes(name) ? "verify.errors.verificationCancelled" : "verify.errors.verificationFailed");
+  }
+
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
@@ -53,7 +60,7 @@ export function LoginPasskey({ loginName, sessionId, requestId, altPassword, org
 
           return submitLoginAndContinue(pK)
             .catch((error) => {
-              setError(error instanceof Error ? error.message : String(error));
+              setError(passkeyFailure(error));
               return;
             })
             .finally(() => {
@@ -61,7 +68,7 @@ export function LoginPasskey({ loginName, sessionId, requestId, altPassword, org
             });
         })
         .catch((error) => {
-          setError(error instanceof Error ? error.message : String(error));
+          setError(passkeyFailure(error));
           return;
         })
         .finally(() => {
