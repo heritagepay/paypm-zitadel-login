@@ -122,6 +122,10 @@ export function operationsDeploymentGrantCommand(value: unknown): value is Opera
     "operations.kyc.read",
     "operations.audit.read",
     "operations.contract-vault.read",
+    // Operations dispute casework (heritagepay-backend #147): read, maker, checker.
+    "operations.disputes.read",
+    "operations.disputes.manage",
+    "operations.disputes.decide",
   ]);
 }
 export function operationsKycGrantCommand(value: unknown): value is OperationsKycGrantCommand {
