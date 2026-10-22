@@ -53,7 +53,10 @@ export type OperationsDeploymentGrantCommand = {
     | "operations.transactions.read"
     | "operations.kyc.read"
     | "operations.audit.read"
-    | "operations.contract-vault.read";
+    | "operations.contract-vault.read"
+    | "operations.disputes.read"
+    | "operations.disputes.manage"
+    | "operations.disputes.decide";
   expiresAt: string;
   reason: string;
 };
