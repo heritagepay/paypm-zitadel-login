@@ -23,3 +23,4 @@ The **Login App** (`apps/login`) provides the user interface for authentication 
 - **Test (unit)**: `pnpm nx run @zitadel/login:test-unit`
 - **Test (integration)**: `pnpm nx run @zitadel/login:test-integration`
 - **Pack (Docker)**: `pnpm nx run @zitadel/login:pack` — builds a local Docker image `zitadel/zitadel-login:local`. Requires Docker daemon.
+- **PayPM image**: the in-cluster build engine builds every new `paypm-v4.15.3` head into `registry.paypm.net/heritagepay/zitadel-login:<sha>` (build only; release pins stay manual). See `docs/BUILD_ENGINE.md` in heritagepay-gitops.
