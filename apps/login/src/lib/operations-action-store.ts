@@ -56,7 +56,11 @@ export type OperationsDeploymentGrantCommand = {
     | "operations.contract-vault.read"
     | "operations.disputes.read"
     | "operations.disputes.manage"
-    | "operations.disputes.decide";
+    | "operations.disputes.decide"
+    | "operations.incidents.read"
+    | "operations.incidents.manage"
+    | "operations.alerts.read"
+    | "operations.alerts.acknowledge";
   expiresAt: string;
   reason: string;
 };

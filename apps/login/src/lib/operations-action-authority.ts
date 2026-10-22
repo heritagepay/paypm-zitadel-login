@@ -126,6 +126,11 @@ export function operationsDeploymentGrantCommand(value: unknown): value is Opera
     "operations.disputes.read",
     "operations.disputes.manage",
     "operations.disputes.decide",
+    // Operations provider incidents (#156) and alerts (#162).
+    "operations.incidents.read",
+    "operations.incidents.manage",
+    "operations.alerts.read",
+    "operations.alerts.acknowledge",
   ]);
 }
 export function operationsKycGrantCommand(value: unknown): value is OperationsKycGrantCommand {
